@@ -99,6 +99,9 @@ class Kestrel
     constexpr static int MAX_NUM_ERRORS = 10; ///<Maximum number of errors to log before overwriting previous errors in buffer
 	
     const uint32_t PORT_RANGE_ERROR = 0xF000; //FIX! 
+
+	
+
     public:
         Kestrel();
         String begin();
@@ -108,10 +111,25 @@ class Kestrel
         bool disableDataAll();
         bool enableI2C_OB(bool state = true);
         bool enableI2C_Global(bool state = true);
+		bool enableSD(bool state = true);
+		bool enableAuxPower(bool state);
+		time_t getTime();
 
         static constexpr uint8_t numTalonPorts = 4; 
 		static constexpr int MAX_MESSAGE_LENGTH = 1024; ///<Maximum number of characters allowed for single transmission 
 		// static constexpr uint16_t 
+		struct {
+		int year;
+		int month;
+		int day;
+		int hour;
+		int minute;
+		int second;
+		uint8_t source;
+		} currentDateTime;
+
+		bool updateTime();
+
     private:
         PCAL9535A ioOB;
         PCAL9535A ioTalon;
@@ -121,6 +139,7 @@ class Kestrel
         const uint32_t portErrorCode = 0x0F0; //Used to easily OR with error codes to add the Kestrel ID
 
         int throwError(uint32_t error);
+		
 
 };
 

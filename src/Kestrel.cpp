@@ -66,9 +66,11 @@ bool Kestrel::enableData(uint8_t port, bool state)
     else {
         enableI2C_OB(true);
         enableI2C_Global(false);
+        ioTalon.pinMode(PinsTalon::SEL[port - 1], OUTPUT);
+        ioTalon.digitalWrite(PinsTalon::SEL[port - 1], LOW); //DEBUG!
         ioTalon.pinMode(PinsTalon::I2C_EN[port - 1], OUTPUT);
         ioTalon.digitalWrite(PinsTalon::I2C_EN[port - 1], state);
-        Serial.println(PinsTalon::I2C_EN[port - 1]); //DEBUG!
+        // Serial.println(PinsTalon::I2C_EN[port - 1]); //DEBUG!
     }
     
     return false; //DEBUG!
@@ -110,3 +112,53 @@ int Kestrel::throwError(uint32_t error)
 	if(numErrors > MAX_NUM_ERRORS) errorOverwrite = true; //Set flag if looping over previous errors 
 	return numErrors;
 }
+
+bool Kestrel::enableSD(bool state)
+{
+    enableI2C_OB(true);
+    enableI2C_Global(false);
+    if(state) {
+        enableAuxPower(true); //Make sure Aux power is on
+        ioOB.pinMode(PinsOB::SD_EN, OUTPUT);
+        ioOB.digitalWrite(PinsOB::SD_EN, HIGH);
+    }
+    else if(!state) {
+        ioOB.pinMode(PinsOB::SD_EN, OUTPUT);
+        ioOB.digitalWrite(PinsOB::SD_EN, LOW);
+    }
+    return false; //DEBUG!
+}
+
+bool Kestrel::enableAuxPower(bool state)
+{
+    enableI2C_OB(true);
+    enableI2C_Global(false);
+    ioOB.pinMode(PinsOB::AUX_EN, OUTPUT);
+    ioOB.digitalWrite(PinsOB::AUX_EN, state); 
+    return false; //DEBUG!
+}
+
+bool Kestrel::updateTime()
+{
+    if(Time.isValid()) { //If particle time is valid, set from this
+        currentDateTime.year = Time.year();
+        currentDateTime.month = Time.month();
+        currentDateTime.day = Time.day();
+        currentDateTime.hour = Time.hour();
+        currentDateTime.minute = Time.minute();
+        currentDateTime.second = Time.second();
+        return true; //debug!
+    }
+    else { //If time is not valid, set an arbitray time
+        currentDateTime.year = 2049;
+        currentDateTime.month = 4;
+        currentDateTime.day = 12;
+        currentDateTime.hour = 6;
+        currentDateTime.minute = 23;
+        currentDateTime.second = 30;
+        return false;
+    }
+    return false;
+
+}
+
