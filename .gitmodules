@@ -1,0 +1,6 @@
+[submodule "src/MCP7940_Library"]
+	path = src/MCP7940_Library
+	url = https://github.com/bschulz1701/MCP7940_Library.git
+[submodule "src/Driver_-_MCP79412"]
+	path = src/Driver_-_MCP79412
+	url = https://github.com/gemsiot/Driver_-_MCP79412.git
