@@ -44,7 +44,10 @@ Distributed as-is; no warranty is given.
 #ifndef Kestrel_h
 #define Kestrel_h
 
+#include <Sensor.h>
 #include <PCAL9535A.h>
+// #include "MCP7940_Library/src/MCP7940.h"
+#include "DRIVER_-_MCP79412/src/MCP79412.h"
 // #include <GlobalPins.h>
 
 
@@ -94,17 +97,34 @@ namespace PinsTalon { //For Kestrel v1.1
 	// constexpr uint16_t FAULT4 = 14;
 }
 
-class Kestrel
+namespace TimeSource { //FIX!
+	constexpr uint8_t RTC = 0;
+	constexpr uint8_t CELLULAR = 1;
+	constexpr uint8_t GPS = 2; 
+	constexpr uint8_t NONE = 3;
+}
+
+struct dateTimeStruct {
+			int year;
+			int month;
+			int day;
+			int hour;
+			int minute;
+			int second;
+			uint8_t source = TimeSource::NONE;
+		};
+
+class Kestrel: public Sensor
 {
     constexpr static int MAX_NUM_ERRORS = 10; ///<Maximum number of errors to log before overwriting previous errors in buffer
 	
-    const uint32_t PORT_RANGE_ERROR = 0xF000; //FIX! 
+    const uint32_t KESTREL_PORT_RANGE_ERROR = 0x90010300; ///<Kestrel port assignment is out of range
 
 	
 
     public:
         Kestrel();
-        String begin();
+        String begin(time_t time, bool &criticalFault, bool &fault);
         bool enablePower(uint8_t port, bool state = true);
         bool enableData(uint8_t port, bool state = true);
         bool disablePowerAll();
@@ -114,31 +134,36 @@ class Kestrel
 		bool enableSD(bool state = true);
 		bool enableAuxPower(bool state);
 		time_t getTime();
+		bool syncTime();
+		bool startTimer(time_t period = 0); //Default to 0, if 0, use default timer period
+		bool waitUntilTimerDone();
+
+		String getErrors();
+		uint8_t totalErrors() {
+			return numErrors + rtc.numErrors; 
+		}
 
         static constexpr uint8_t numTalonPorts = 4; 
 		static constexpr int MAX_MESSAGE_LENGTH = 1024; ///<Maximum number of characters allowed for single transmission 
 		// static constexpr uint16_t 
-		struct {
-		int year;
-		int month;
-		int day;
-		int hour;
-		int minute;
-		int second;
-		uint8_t source;
-		} currentDateTime;
+		
+		dateTimeStruct currentDateTime = {2049, 6, 16, 3, 27, 31, TimeSource::NONE}; //Initialize with dummy time //DEBUG!
 
 		bool updateTime();
 
     private:
         PCAL9535A ioOB;
         PCAL9535A ioTalon;
+		MCP79412 rtc;
         uint32_t errors[MAX_NUM_ERRORS] = {0};
         uint8_t numErrors = 0; //Used to track the index of errors array
         bool errorOverwrite = false; //Used to track if errors have been overwritten in time since last report
         const uint32_t portErrorCode = 0x0F0; //Used to easily OR with error codes to add the Kestrel ID
-
+		const time_t defaultPeriod = 300; //Default logging period of 300 seconds
+		time_t logPeriod = 0; //Used to store the current log period
         int throwError(uint32_t error);
+		time_t timerStart = 0; //Start time for timer 
+		
 		
 
 };
