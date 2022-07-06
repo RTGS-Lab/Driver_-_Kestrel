@@ -16,6 +16,8 @@ Distributed as-is; no warranty is given.
 
 #include <Kestrel.h>
 
+Kestrel* Kestrel::selfPointer;
+
 Kestrel::Kestrel() : ioOB(0x20), ioTalon(0x21)
 {
 	// port = talonPort; //Copy to local
@@ -24,8 +26,11 @@ Kestrel::Kestrel() : ioOB(0x20), ioTalon(0x21)
 
 String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
 {
+    selfPointer = this;
+    System.on(time_changed, timechange_handler);
     #if defined(ARDUINO) && ARDUINO >= 100 
 		Wire.begin();
+        Wire.setClock(400000); //Confirm operation in fast mode
 	#elif defined(PARTICLE)
 		if(!Wire.isEnabled()) Wire.begin(); //Only initialize I2C if not done already //INCLUDE FOR USE WITH PARTICLE 
 	#endif
@@ -35,12 +40,14 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
 
     ioOB.begin();
     ioTalon.begin();
-    rtc.begin(true); //Use with external oscilator 
-
+    if(rtc.begin(true) == 0) criticalFault = true; //Use with external oscilator, set critical fault if not able to connect 
+    if(Particle.connected() == false) criticalFault = true; //If not connected to cell set critical error
     for(int i = 1; i <= 4; i++) {
         enablePower(i, false); //Default all power to off
         enableData(i, false); //Default all data to off
     }
+    syncTime(); 
+    Particle.syncTime(); //DEBUG!
     // ioOB.pinMode(PinsOB::)
 
     return ""; //DEBUG!
@@ -83,6 +90,7 @@ bool Kestrel::enablePower(uint8_t port, bool state)
     else {
         enableI2C_OB(true);
         enableI2C_Global(false);
+        // Wire.reset(); //DEBUG!
         ioTalon.pinMode(PinsTalon::EN[port - 1], OUTPUT);
         ioTalon.digitalWrite(PinsTalon::EN[port - 1], state);
     }
@@ -97,6 +105,7 @@ bool Kestrel::enableData(uint8_t port, bool state)
     else {
         enableI2C_OB(true);
         enableI2C_Global(false);
+        // Wire.reset(); //DEBUG!
         ioTalon.pinMode(PinsTalon::SEL[port - 1], OUTPUT);
         ioTalon.digitalWrite(PinsTalon::SEL[port - 1], LOW); //DEBUG!
         ioTalon.pinMode(PinsTalon::I2C_EN[port - 1], OUTPUT);
@@ -111,6 +120,7 @@ bool Kestrel::enableI2C_OB(bool state)
 {
     pinMode(Pins::I2C_OB_EN, OUTPUT);
 	digitalWrite(Pins::I2C_OB_EN, state);
+    Wire.reset(); //DEBUG!
     return false; //DEBUG!
 }
 
@@ -118,6 +128,7 @@ bool Kestrel::enableI2C_Global(bool state)
 {
     pinMode(Pins::I2C_GLOBAL_EN, OUTPUT);
 	digitalWrite(Pins::I2C_GLOBAL_EN, state);
+    Wire.reset(); //DEBUG!
     return false; //DEBUG!
 }
 
@@ -199,7 +210,39 @@ bool Kestrel::updateTime()
 bool Kestrel::syncTime()
 {
     //Synchronize time across GPS, Cell and RTC
+    Serial.println("TIME SYNC!"); //DEBUG!
+    if(Particle.connected()) {
+        timeSyncRequested = true;
+        Particle.syncTime();
+        waitFor(Particle.syncTimeDone, 5000); //Wait until sync is done, at most 5 seconds //FIX!
+        Serial.print("Particle Time: "); 
+        Serial.println(Time.now());
+        Serial.print("RTC Time: ");
+        Serial.println(rtc.getTimeUnix());
+        timeSyncRequested = false; //Release control of time sync override 
+    }
     return false; //DEBUG!
+}
+
+time_t Kestrel::getTime()
+{
+    if(!Time.isValid()) { //If time has not been synced, do so now
+        syncTime();
+    }
+    if(Time.isValid()) { //If time is good, report current value
+        return Time.now();
+    }
+    // return Time.now();
+    //THROW ERROR! //FIX!
+    return 0; //DEBUG! //If time is not valid, return failure value
+}
+
+String Kestrel::getTimeString()
+{
+    time_t currentTime = getTime();
+    if(currentTime == 0) return "null"; //If time is bad, return null value to JSON
+    else return "DUMMY"; //FIX!
+    // else return String(currentTime); //Otherwise return normal string val
 }
 
 bool Kestrel::startTimer(time_t period)
@@ -222,8 +265,38 @@ bool Kestrel::waitUntilTimerDone()
     else return false; 
 }
 
-time_t Kestrel::getTime()
+bool Kestrel::feedWDT()
 {
-    return 0; //DEBUG!
+    if(!criticalFault) { //If there is currently no critical fault, feed WDT
+        pinMode(Pins::WD_HOLD, OUTPUT);
+        digitalWrite(Pins::WD_HOLD, LOW);
+        delay(1);
+        digitalWrite(Pins::WD_HOLD, HIGH);
+        delay(1);
+        digitalWrite(Pins::WD_HOLD, LOW);
+        return true;
+    } 
+    else {
+        System.reset(); //DEBUG!
+        return false;
+    }
 }
+
+void Kestrel::timechange_handler(system_event_t event, int param)
+{
+    Serial.print("Time Change Handler: "); //DEBUG!
+    Serial.print(event); //DEBUG!
+    Serial.print("\t");
+    Serial.println(param); //DEBUG!
+    if(event == time_changed) { //Confirm event type before proceeding 
+        if(param == time_changed_sync && !(selfPointer->timeSyncRequested)) { 
+            Serial.println("TIME CHANGE: Auto"); //DEBUG!
+            selfPointer->syncTime(); //if time update not from manual sync (and sync not requested), call time sync
+        }
+        if(param == time_changed_sync && selfPointer->timeSyncRequested) Serial.println("TIME CHANGE: Requested"); //DEBUG!
+        if(param == time_changed_manually) Serial.println("TIME CHANGE: Manual"); //DEBUG!
+    }
+    
+}
+
 

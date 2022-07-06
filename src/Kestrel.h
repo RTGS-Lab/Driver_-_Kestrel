@@ -137,6 +137,8 @@ class Kestrel: public Sensor
 		bool syncTime();
 		bool startTimer(time_t period = 0); //Default to 0, if 0, use default timer period
 		bool waitUntilTimerDone();
+		// time_t getTime();
+		String getTimeString();
 
 		String getErrors();
 		uint8_t totalErrors() {
@@ -150,6 +152,7 @@ class Kestrel: public Sensor
 		dateTimeStruct currentDateTime = {2049, 6, 16, 3, 27, 31, TimeSource::NONE}; //Initialize with dummy time //DEBUG!
 
 		bool updateTime();
+		bool feedWDT();
 
     private:
         PCAL9535A ioOB;
@@ -163,8 +166,10 @@ class Kestrel: public Sensor
 		time_t logPeriod = 0; //Used to store the current log period
         int throwError(uint32_t error);
 		time_t timerStart = 0; //Start time for timer 
-		
-		
+		bool criticalFault = false; 
+		static Kestrel* selfPointer;
+		static void timechange_handler(system_event_t event, int param);
+		bool timeSyncRequested = false; ///<Used to indicate to the system that a time sync was requested from Particle and not to override
 
 };
 
