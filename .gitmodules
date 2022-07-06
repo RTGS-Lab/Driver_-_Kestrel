@@ -4,3 +4,6 @@
 [submodule "src/Driver_-_MCP79412"]
 	path = src/Driver_-_MCP79412
 	url = https://github.com/gemsiot/Driver_-_MCP79412.git
+[submodule "src/SparkFun_Ublox_Arduino_Library"]
+	path = src/SparkFun_Ublox_Arduino_Library
+	url = https://github.com/sparkfun/SparkFun_Ublox_Arduino_Library.git
