@@ -48,6 +48,7 @@ Distributed as-is; no warranty is given.
 #include <PCAL9535A.h>
 // #include "MCP7940_Library/src/MCP7940.h"
 #include "DRIVER_-_MCP79412/src/MCP79412.h"
+#include "SparkFun_Ublox_Arduino_Library/src/SparkFun_Ublox_Arduino_Library.h"
 // #include <GlobalPins.h>
 
 
@@ -99,8 +100,8 @@ namespace PinsTalon { //For Kestrel v1.1
 
 namespace TimeSource { //FIX!
 	constexpr uint8_t RTC = 0;
-	constexpr uint8_t CELLULAR = 1;
-	constexpr uint8_t GPS = 2; 
+	constexpr uint8_t CELLULAR = 2;
+	constexpr uint8_t GPS = 1; 
 	constexpr uint8_t NONE = 3;
 }
 
@@ -131,10 +132,11 @@ class Kestrel: public Sensor
         bool disableDataAll();
         bool enableI2C_OB(bool state = true);
         bool enableI2C_Global(bool state = true);
+		bool enableI2C_External(bool state = true);
 		bool enableSD(bool state = true);
 		bool enableAuxPower(bool state);
 		time_t getTime();
-		bool syncTime();
+		uint8_t syncTime();
 		bool startTimer(time_t period = 0); //Default to 0, if 0, use default timer period
 		bool waitUntilTimerDone();
 		// time_t getTime();
@@ -151,13 +153,14 @@ class Kestrel: public Sensor
 		
 		dateTimeStruct currentDateTime = {2049, 6, 16, 3, 27, 31, TimeSource::NONE}; //Initialize with dummy time //DEBUG!
 
-		bool updateTime();
+		uint8_t updateTime();
 		bool feedWDT();
 
     private:
         PCAL9535A ioOB;
         PCAL9535A ioTalon;
 		MCP79412 rtc;
+		SFE_UBLOX_GPS gps;
         uint32_t errors[MAX_NUM_ERRORS] = {0};
         uint8_t numErrors = 0; //Used to track the index of errors array
         bool errorOverwrite = false; //Used to track if errors have been overwritten in time since last report
@@ -170,8 +173,10 @@ class Kestrel: public Sensor
 		static Kestrel* selfPointer;
 		static void timechange_handler(system_event_t event, int param);
 		bool timeSyncRequested = false; ///<Used to indicate to the system that a time sync was requested from Particle and not to override
-
-};
+		time_t timegm(struct tm *tm); //Portable implementation
+		time_t maxTimeError = 5; //Max time error allowed between clock sources [seconds]
+		bool timeGood = false; ///<Keep track of the legitimacy of the time based on the last sync attempt
+};		
 
 // constexpr uint8_t Kestrel::numTalonPorts; 
 

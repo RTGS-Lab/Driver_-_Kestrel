@@ -37,10 +37,19 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
 
     enableI2C_Global(false); //Turn off external I2C
     enableI2C_OB(true); //Turn on internal I2C
-
+    enableAuxPower(true); //Turn on aux power 
+    delay(100); //DEBUG! For GPS
     ioOB.begin();
     ioTalon.begin();
     if(rtc.begin(true) == 0) criticalFault = true; //Use with external oscilator, set critical fault if not able to connect 
+    if(gps.begin() == false) {
+        criticalFault = true; //DEBUG! ??
+        //Throw ERROR!
+        Serial.println("GPS ERROR");
+    }
+    else {
+        gps.setI2COutput(COM_TYPE_UBX);
+    }
     if(Particle.connected() == false) criticalFault = true; //If not connected to cell set critical error
     for(int i = 1; i <= 4; i++) {
         enablePower(i, false); //Default all power to off
@@ -132,6 +141,15 @@ bool Kestrel::enableI2C_Global(bool state)
     return false; //DEBUG!
 }
 
+bool Kestrel::enableI2C_External(bool state)
+{
+    enableI2C_Global(false);
+	enableI2C_OB(true);
+	//Turn on external I2C port
+	ioOB.pinMode(PinsOB::I2C_EXT_EN, OUTPUT);
+	ioOB.digitalWrite(PinsOB::I2C_EXT_EN, state);
+}
+
 bool Kestrel::disablePowerAll()
 {
     for(int i = 1; i <= 4; i++) {
@@ -180,56 +198,135 @@ bool Kestrel::enableAuxPower(bool state)
     return false; //DEBUG!
 }
 
-bool Kestrel::updateTime()
+uint8_t Kestrel::updateTime()
 {
-    Serial.print("Current Timer Period: "); //DEBUG!
-    Serial.println(logPeriod);
-    if(Time.isValid()) { //If particle time is valid, set from this
-        currentDateTime.year = Time.year();
-        currentDateTime.month = Time.month();
-        currentDateTime.day = Time.day();
-        currentDateTime.hour = Time.hour();
-        currentDateTime.minute = Time.minute();
-        currentDateTime.second = Time.second();
-        currentDateTime.source = TimeSource::CELLULAR;
-        return true; //debug!
+    // Serial.print("Current Timer Period: "); //DEBUG!
+    // Serial.println(logPeriod);
+    static uint8_t timeSource = syncTime();
+    static time_t lastRunTime = millis();
+
+    if((millis() - lastRunTime) > 60000) { //Only sync time if it has been more than 60 seconds since last synchronization
+        timeSource = syncTime(); 
+        lastRunTime = millis();
     }
-    else { //If time is not valid, write to default time //FIX??
-        currentDateTime.year = 2000;
-        currentDateTime.month = 1;
-        currentDateTime.day = 1;
-        currentDateTime.hour = 0;
-        currentDateTime.minute = 0;
-        currentDateTime.second = 0;
-        currentDateTime.source = TimeSource::NONE;
-        return false;
-    }
-    return false;
+    // if(Time.isValid()) { //If particle time is valid, set from this
+    currentDateTime.source = timeSource; //sync time and record source of current time
+    currentDateTime.year = Time.year();
+    currentDateTime.month = Time.month();
+    currentDateTime.day = Time.day();
+    currentDateTime.hour = Time.hour();
+    currentDateTime.minute = Time.minute();
+    currentDateTime.second = Time.second();
+    
+    return currentDateTime.source; //debug!
+    // }
+    // else { //If time is not valid, write to default time //FIX??
+    //     currentDateTime.year = 2000;
+    //     currentDateTime.month = 1;
+    //     currentDateTime.day = 1;
+    //     currentDateTime.hour = 0;
+    //     currentDateTime.minute = 0;
+    //     currentDateTime.second = 0;
+    //     currentDateTime.source = TimeSource::NONE;
+    //     return false;
+    // }
+    // return false;
 }
 
-bool Kestrel::syncTime()
+uint8_t Kestrel::syncTime()
 {
     //Synchronize time across GPS, Cell and RTC
     Serial.println("TIME SYNC!"); //DEBUG!
+    // Timestamp t = getRawTime(); //Get updated time
+    
+    time_t gpsTime = 0;
+    time_t particleTime = 0;
+    time_t rtcTime = 0;
+    
+
+    /////////// CELL TIME //////////////////
     if(Particle.connected()) {
         timeSyncRequested = true;
         Particle.syncTime();
         waitFor(Particle.syncTimeDone, 5000); //Wait until sync is done, at most 5 seconds //FIX!
-        Serial.print("Particle Time: "); 
-        Serial.println(Time.now());
-        Serial.print("RTC Time: ");
-        Serial.println(rtc.getTimeUnix());
+        particleTime = Time.now();
         timeSyncRequested = false; //Release control of time sync override 
+        Serial.print("Particle Time: "); 
+        Serial.println(particleTime);
     }
-    return false; //DEBUG!
+
+    ////////// GPS TIME ///////////////////
+    enableAuxPower(true);
+    enableI2C_Global(false);
+    enableI2C_OB(true);
+    if(gps.getDateValid() && gps.getTimeValid()) {
+        struct tm timeinfo = {0}; //Create struct in C++ time land
+        timeinfo.tm_year = gps.getYear() - 1900; //Years since 1900
+        timeinfo.tm_mon = gps.getMonth() - 1; //Months since january
+        timeinfo.tm_mday = gps.getDay();
+        timeinfo.tm_hour = gps.getHour();
+        timeinfo.tm_min = gps.getMinute();
+        timeinfo.tm_sec = gps.getSecond();
+        gpsTime = timegm(&timeinfo); //Convert struct to unix time
+        Serial.print("GPS Time: ");
+        Serial.println(gpsTime); //DEBUG!
+    }
+
+	
+
+    /////////// RTC TIME //////////////
+    rtcTime = rtc.getTimeUnix();
+
+    if(abs(rtcTime - gpsTime) < maxTimeError && abs(rtcTime - particleTime) < maxTimeError) { //If both updated sources match local time
+        Serial.println("CLOCK SOURCE: All match");
+        timeGood = true;
+        return TimeSource::CELLULAR; //Report cell as the most comprehensive source
+    }
+
+    else if(abs(particleTime - gpsTime) < maxTimeError) { //If both updated variables match 
+        Serial.println("CLOCK SOURCE: GPS and Cell match");
+        rtc.setTime(Time.year(), Time.month(), Time.day(), Time.hour(), Time.minute(), Time.second()); //Set RTC from Cell
+        timeGood = true;
+        //Throw error
+        return TimeSource::CELLULAR;
+    }
+    else if(abs(particleTime - rtcTime) < maxTimeError) { //If cell and rtc agree
+        Serial.println("CLOCK SOURCE: Cell and local match");
+        //Can we set the GPS time??
+        //Throw error
+        timeGood = true;
+        return TimeSource::CELLULAR;
+    }
+    else if(abs(gpsTime - rtcTime) < maxTimeError) { //If gps and rtc agree
+        Serial.println("CLOCK SOURCE: GPS and local match");
+        Time.setTime(gpsTime); //Set particle time from GPS time
+        //Throw error
+        timeGood = true;
+        return TimeSource::GPS;
+    }
+    else { //No two sources agree, very bad!
+        
+        if(rtcTime > 1641016800) { //Jan 1, 2022, date seems to be reeasonable //FIX!
+            Time.setTime(rtc.getTimeUnix()); //Set time from RTC   
+            timeGood = true;
+            return TimeSource::RTC;
+        }
+        criticalFault = true; //FIX??
+        timeGood = false; 
+        Time.setTime(0); //Set time back to start of EPOCH
+        return TimeSource::NONE;
+        //Throw error!
+    }
+    // return false; //DEBUG!
+    return TimeSource::NONE;
 }
 
 time_t Kestrel::getTime()
 {
-    if(!Time.isValid()) { //If time has not been synced, do so now
+    if(!Time.isValid() || timeGood) { //If time has not been synced, do so now
         syncTime();
     }
-    if(Time.isValid()) { //If time is good, report current value
+    if(Time.isValid() && timeGood) { //If time is good, report current value
         return Time.now();
     }
     // return Time.now();
@@ -284,10 +381,10 @@ bool Kestrel::feedWDT()
 
 void Kestrel::timechange_handler(system_event_t event, int param)
 {
-    Serial.print("Time Change Handler: "); //DEBUG!
-    Serial.print(event); //DEBUG!
-    Serial.print("\t");
-    Serial.println(param); //DEBUG!
+    // Serial.print("Time Change Handler: "); //DEBUG!
+    // Serial.print(event); //DEBUG!
+    // Serial.print("\t");
+    // Serial.println(param); //DEBUG!
     if(event == time_changed) { //Confirm event type before proceeding 
         if(param == time_changed_sync && !(selfPointer->timeSyncRequested)) { 
             Serial.println("TIME CHANGE: Auto"); //DEBUG!
@@ -297,6 +394,23 @@ void Kestrel::timechange_handler(system_event_t event, int param)
         if(param == time_changed_manually) Serial.println("TIME CHANGE: Manual"); //DEBUG!
     }
     
+}
+
+time_t Kestrel::timegm(struct tm *tm)
+{
+    time_t ret;
+    char *tz;
+
+   tz = getenv("TZ");
+    setenv("TZ", "", 1);
+    tzset();
+    ret = mktime(tm);
+    if (tz)
+        setenv("TZ", tz, 1);
+    else
+        unsetenv("TZ");
+    tzset();
+    return ret;
 }
 
 
