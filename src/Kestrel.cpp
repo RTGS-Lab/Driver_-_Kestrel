@@ -95,6 +95,9 @@ String Kestrel::getErrors()
 bool Kestrel::enablePower(uint8_t port, bool state) 
 {
     //FIX! Throw error is port out of range
+    if(port == 5) { //Port for (ext/batter port) is special case
+        // return enableAuxPower(state); 
+    }
     if(port == 0 || port > numTalonPorts) throwError(KESTREL_PORT_RANGE_ERROR | portErrorCode);
     else {
         enableI2C_OB(true);
@@ -110,6 +113,10 @@ bool Kestrel::enablePower(uint8_t port, bool state)
 bool Kestrel::enableData(uint8_t port, bool state)
 {
     //FIX! Throw error is port out of range
+    if(port == 5) { //Port for (ext/batter port) is special case
+        enableI2C_Global(state);
+        return enableI2C_External(state); 
+    }
     if(port == 0 || port > numTalonPorts) throwError(KESTREL_PORT_RANGE_ERROR | portErrorCode);
     else {
         enableI2C_OB(true);
@@ -148,6 +155,7 @@ bool Kestrel::enableI2C_External(bool state)
 	//Turn on external I2C port
 	ioOB.pinMode(PinsOB::I2C_EXT_EN, OUTPUT);
 	ioOB.digitalWrite(PinsOB::I2C_EXT_EN, state);
+    return false; //DEBUG!
 }
 
 bool Kestrel::disablePowerAll()
@@ -338,7 +346,8 @@ String Kestrel::getTimeString()
 {
     time_t currentTime = getTime();
     if(currentTime == 0) return "null"; //If time is bad, return null value to JSON
-    else return "DUMMY"; //FIX!
+    // else return "DUMMY"; //FIX!
+    else return String((int)currentTime);
     // else return String(currentTime); //Otherwise return normal string val
 }
 

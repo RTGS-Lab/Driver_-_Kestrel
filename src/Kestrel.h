@@ -147,7 +147,7 @@ class Kestrel: public Sensor
 			return numErrors + rtc.numErrors; 
 		}
 
-        static constexpr uint8_t numTalonPorts = 4; 
+        static constexpr uint8_t numTalonPorts = 5; 
 		static constexpr int MAX_MESSAGE_LENGTH = 1024; ///<Maximum number of characters allowed for single transmission 
 		// static constexpr uint16_t 
 		
