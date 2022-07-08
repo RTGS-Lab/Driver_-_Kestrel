@@ -59,7 +59,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     Particle.syncTime(); //DEBUG!
     // ioOB.pinMode(PinsOB::)
 
-    return ""; //DEBUG!
+    return "{}"; //DEBUG!
 }
 
 String Kestrel::getErrors()
@@ -174,12 +174,12 @@ bool Kestrel::disableDataAll()
     return 0; //DEBUG!
 }
 
-int Kestrel::throwError(uint32_t error)
-{
-	errors[(numErrors++) % MAX_NUM_ERRORS] = error; //Write error to the specified location in the error array
-	if(numErrors > MAX_NUM_ERRORS) errorOverwrite = true; //Set flag if looping over previous errors 
-	return numErrors;
-}
+// int Kestrel::throwError(uint32_t error)
+// {
+// 	errors[(numErrors++) % MAX_NUM_ERRORS] = error; //Write error to the specified location in the error array
+// 	if(numErrors > MAX_NUM_ERRORS) errorOverwrite = true; //Set flag if looping over previous errors 
+// 	return numErrors;
+// }
 
 bool Kestrel::enableSD(bool state)
 {
@@ -259,7 +259,7 @@ uint8_t Kestrel::syncTime()
         waitFor(Particle.syncTimeDone, 5000); //Wait until sync is done, at most 5 seconds //FIX!
         particleTime = Time.now();
         timeSyncRequested = false; //Release control of time sync override 
-        Serial.print("Particle Time: "); 
+        Serial.print("Cell Time: "); 
         Serial.println(particleTime);
     }
 
@@ -284,28 +284,32 @@ uint8_t Kestrel::syncTime()
 
     /////////// RTC TIME //////////////
     rtcTime = rtc.getTimeUnix();
+    Serial.print("RTC Time: ");
+    Serial.println(rtcTime); //DEBUG!
+    Serial.print("Particle Time: ");
+    Serial.println(Time.now());  
 
-    if(abs(rtcTime - gpsTime) < maxTimeError && abs(rtcTime - particleTime) < maxTimeError) { //If both updated sources match local time
+    if(abs(rtcTime - gpsTime) < maxTimeError && abs(rtcTime - particleTime) < maxTimeError && rtcTime != 0 && gpsTime != 0 && particleTime != 0) { //If both updated sources match local time
         Serial.println("CLOCK SOURCE: All match");
         timeGood = true;
         return TimeSource::CELLULAR; //Report cell as the most comprehensive source
     }
 
-    else if(abs(particleTime - gpsTime) < maxTimeError) { //If both updated variables match 
+    else if(abs(particleTime - gpsTime) < maxTimeError && gpsTime != 0 && particleTime != 0) { //If both updated variables match 
         Serial.println("CLOCK SOURCE: GPS and Cell match");
         rtc.setTime(Time.year(), Time.month(), Time.day(), Time.hour(), Time.minute(), Time.second()); //Set RTC from Cell
         timeGood = true;
         //Throw error
         return TimeSource::CELLULAR;
     }
-    else if(abs(particleTime - rtcTime) < maxTimeError) { //If cell and rtc agree
+    else if(abs(particleTime - rtcTime) < maxTimeError && rtcTime != 0 && particleTime != 0) { //If cell and rtc agree
         Serial.println("CLOCK SOURCE: Cell and local match");
         //Can we set the GPS time??
         //Throw error
         timeGood = true;
         return TimeSource::CELLULAR;
     }
-    else if(abs(gpsTime - rtcTime) < maxTimeError) { //If gps and rtc agree
+    else if(abs(gpsTime - rtcTime) < maxTimeError && gpsTime != 0 && rtcTime != 0) { //If gps and rtc agree
         Serial.println("CLOCK SOURCE: GPS and local match");
         Time.setTime(gpsTime); //Set particle time from GPS time
         //Throw error
@@ -315,13 +319,15 @@ uint8_t Kestrel::syncTime()
     else { //No two sources agree, very bad!
         
         if(rtcTime > 1641016800) { //Jan 1, 2022, date seems to be reeasonable //FIX!
+            Serial.println("CLOCK SOURCE: Stale RTC"); //DEBUG!
             Time.setTime(rtc.getTimeUnix()); //Set time from RTC   
             timeGood = true;
             return TimeSource::RTC;
         }
+        Serial.println("CLOCK SOURCE: NONE"); //DEBUG!
         criticalFault = true; //FIX??
         timeGood = false; 
-        Time.setTime(0); //Set time back to start of EPOCH
+        Time.setTime(946684800); //Set time back to year 2000
         return TimeSource::NONE;
         //Throw error!
     }
@@ -358,6 +364,8 @@ bool Kestrel::startTimer(time_t period)
     enableI2C_Global(false);
     rtc.setAlarm(period); //Set alarm from current time
     timerStart = millis(); 
+    Serial.print("Time Start: "); //DEBUG!
+    Serial.println(timerStart);
     logPeriod = period;
     return false; //DEBUG!
 }
@@ -365,8 +373,10 @@ bool Kestrel::startTimer(time_t period)
 bool Kestrel::waitUntilTimerDone()
 {
     if(logPeriod == 0) return false; //Return if not already setup
+    Serial.print("Time Now: "); //DEBUG!
+    Serial.println(millis());
     pinMode(Pins::Clock_INT, INPUT);
-    while(digitalRead(Pins::Clock_INT) == HIGH && ((millis() - timerStart) < logPeriod*1000 + 500)); //Wait until either timer has expired or clock interrupt has gone off //DEBUG! Give 500 ms cushion for testing RTC
+    while(digitalRead(Pins::Clock_INT) == HIGH && ((millis() - timerStart) < (logPeriod*1000 + 500))){delay(1);} //Wait until either timer has expired or clock interrupt has gone off //DEBUG! Give 500 ms cushion for testing RTC
     if(digitalRead(Pins::Clock_INT) == LOW) return true; //If RTC triggers properly, return true, else return false 
     else return false; 
 }
@@ -383,7 +393,7 @@ bool Kestrel::feedWDT()
         return true;
     } 
     else {
-        System.reset(); //DEBUG!
+        // System.reset(); //DEBUG!
         return false;
     }
 }

@@ -48,7 +48,7 @@ Distributed as-is; no warranty is given.
 #include <PCAL9535A.h>
 // #include "MCP7940_Library/src/MCP7940.h"
 #include "DRIVER_-_MCP79412/src/MCP79412.h"
-#include "SparkFun_Ublox_Arduino_Library/src/SparkFun_Ublox_Arduino_Library.h"
+#include "SparkFun_u-blox_GNSS_Arduino_Library/src/SparkFun_u-blox_GNSS_Arduino_Library.h"
 // #include <GlobalPins.h>
 
 
@@ -99,10 +99,10 @@ namespace PinsTalon { //For Kestrel v1.1
 }
 
 namespace TimeSource { //FIX!
-	constexpr uint8_t RTC = 0;
-	constexpr uint8_t CELLULAR = 2;
-	constexpr uint8_t GPS = 1; 
-	constexpr uint8_t NONE = 3;
+	constexpr uint8_t RTC = 1;
+	constexpr uint8_t CELLULAR = 3;
+	constexpr uint8_t GPS = 2; 
+	constexpr uint8_t NONE = 0;
 }
 
 struct dateTimeStruct {
@@ -160,14 +160,14 @@ class Kestrel: public Sensor
         PCAL9535A ioOB;
         PCAL9535A ioTalon;
 		MCP79412 rtc;
-		SFE_UBLOX_GPS gps;
-        uint32_t errors[MAX_NUM_ERRORS] = {0};
-        uint8_t numErrors = 0; //Used to track the index of errors array
-        bool errorOverwrite = false; //Used to track if errors have been overwritten in time since last report
+		SFE_UBLOX_GNSS gps;
+        // uint32_t errors[MAX_NUM_ERRORS] = {0};
+        // uint8_t numErrors = 0; //Used to track the index of errors array
+        // bool errorOverwrite = false; //Used to track if errors have been overwritten in time since last report
         const uint32_t portErrorCode = 0x0F0; //Used to easily OR with error codes to add the Kestrel ID
 		const time_t defaultPeriod = 300; //Default logging period of 300 seconds
 		time_t logPeriod = 0; //Used to store the current log period
-        int throwError(uint32_t error);
+        // int throwError(uint32_t error);
 		time_t timerStart = 0; //Start time for timer 
 		bool criticalFault = false; 
 		static Kestrel* selfPointer;
