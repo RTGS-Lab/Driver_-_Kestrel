@@ -55,8 +55,9 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
         enablePower(i, false); //Default all power to off
         enableData(i, false); //Default all data to off
     }
+    
     syncTime(); 
-    Particle.syncTime(); //DEBUG!
+    // Particle.syncTime(); //DEBUG!
     // ioOB.pinMode(PinsOB::)
 
     return "{}"; //DEBUG!
@@ -257,6 +258,7 @@ uint8_t Kestrel::syncTime()
         timeSyncRequested = true;
         Particle.syncTime();
         waitFor(Particle.syncTimeDone, 5000); //Wait until sync is done, at most 5 seconds //FIX!
+        Time.zone(0); //Set to UTC 
         particleTime = Time.now();
         timeSyncRequested = false; //Release control of time sync override 
         Serial.print("Cell Time: "); 
