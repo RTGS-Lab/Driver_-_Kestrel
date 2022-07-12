@@ -7,3 +7,6 @@
 [submodule "src/SparkFun_u-blox_GNSS_Arduino_Library"]
 	path = src/SparkFun_u-blox_GNSS_Arduino_Library
 	url = https://github.com/sparkfun/SparkFun_u-blox_GNSS_Arduino_Library.git
+[submodule "src/PCA9634"]
+	path = src/PCA9634
+	url = https://github.com/gemsiot/PCA9634.git
