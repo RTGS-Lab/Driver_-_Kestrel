@@ -18,7 +18,7 @@ Distributed as-is; no warranty is given.
 
 Kestrel* Kestrel::selfPointer;
 
-Kestrel::Kestrel() : ioOB(0x20), ioTalon(0x21)
+Kestrel::Kestrel() : ioOB(0x20), ioTalon(0x21), led(0x52)
 {
 	// port = talonPort; //Copy to local
 	// version = hardwareVersion; //Copy to local
@@ -38,9 +38,21 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     enableI2C_Global(false); //Turn off external I2C
     enableI2C_OB(true); //Turn on internal I2C
     enableAuxPower(true); //Turn on aux power 
-    delay(100); //DEBUG! For GPS
-    ioOB.begin();
-    ioTalon.begin();
+    if(ioOB.begin() != 0) criticalFault = true;
+    if(ioTalon.begin() != 0) criticalFault = true;
+    // delay(100); //DEBUG! For GPS
+    ioOB.pinMode(PinsOB::LED_EN, OUTPUT);
+	ioOB.digitalWrite(PinsOB::LED_EN, LOW); //Turn on LED indicators 
+    led.begin();
+    led.setOutputMode(OpenDrain); //Set device to use open drain outputs
+    led.setGroupMode(Blink); //Set system to blinking mode
+    led.setOutputArray(Off); //Turn all off by default
+    led.setBrightnessArray(ledBrightness); //Set all LEDs to 50% max brightness
+	// led.setGroupBrightness(ledBrightness); //Set to 50% brightness
+	led.setGroupBlinkPeriod(ledPeriod); //Set blink period to specified number of ms
+	led.setGroupOnTime(ledOnTime); //Set on time for each blinking period 
+    setIndicatorState(IndicatorLight::ALL,IndicatorMode::WAITING); //Set all to blinking wait
+    
     if(rtc.begin(true) == 0) criticalFault = true; //Use with external oscilator, set critical fault if not able to connect 
     if(gps.begin() == false) {
         criticalFault = true; //DEBUG! ??
@@ -50,7 +62,8 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     else {
         gps.setI2COutput(COM_TYPE_UBX);
     }
-    if(Particle.connected() == false) criticalFault = true; //If not connected to cell set critical error
+    // if(Particle.connected() == false) criticalFault = true; //If not connected to cell set critical error
+    if(criticalFault) setIndicatorState(IndicatorLight::STAT, IndicatorMode::ERROR); //If there is a critical fault, set the stat light
     for(int i = 1; i <= 4; i++) {
         enablePower(i, false); //Default all power to off
         enableData(i, false); //Default all data to off
@@ -381,6 +394,112 @@ bool Kestrel::waitUntilTimerDone()
     while(digitalRead(Pins::Clock_INT) == HIGH && ((millis() - timerStart) < (logPeriod*1000 + 500))){delay(1);} //Wait until either timer has expired or clock interrupt has gone off //DEBUG! Give 500 ms cushion for testing RTC
     if(digitalRead(Pins::Clock_INT) == LOW) return true; //If RTC triggers properly, return true, else return false 
     else return false; 
+}
+
+bool Kestrel::statLED(bool state)
+{
+    enableI2C_Global(false);
+	enableI2C_OB(true);
+    if(state) led.setOutput(7, On); //Turn stat on
+    else led.setOutput(7, Off); //Turn stat off
+    return false; //DEBUG!
+}
+
+bool Kestrel::setIndicatorState(uint8_t ledBank, uint8_t mode)
+{
+    enableI2C_Global(false);
+	enableI2C_OB(true);
+    led.setBrightness(3, 25); //Reduce brightness of green LEDs //DEBUG!
+    led.setBrightness(5, 25);
+    led.setBrightness(1, 25);
+    switch(ledBank) {
+        case IndicatorLight::SENSORS:
+            if(mode == IndicatorMode::PASS) {
+                led.setOutput(0, On); //Turn green on
+                led.setOutput(1, Off); //Turn amber off
+                led.setOutput(2, Off); //Turn red off
+            }
+            if(mode == IndicatorMode::PREPASS) {
+                led.setOutput(0, Group); //Turn green on blinking
+                led.setOutput(1, Off); //Turn amber off
+                led.setOutput(2, Off); //Turn red off
+            }
+            if(mode == IndicatorMode::WAITING) {
+                led.setOutput(0, Off); //Turn green off
+                led.setOutput(1, Group); //Blink amber with group
+                led.setOutput(2, Off); //Turn red off
+            }
+            if(mode == IndicatorMode::ERROR) {
+                led.setOutput(0, Off); //Turn green off
+                led.setOutput(1, On); //Turn amber on
+                led.setOutput(2, Off); //Turn red on
+            }
+            if(mode == IndicatorMode::ERROR_CRITICAL) {
+                led.setOutput(0, Off); //Turn green off
+                led.setOutput(1, Off); //Turn amber off
+                led.setOutput(2, On); //Turn red on
+            }
+            break;
+        case IndicatorLight::GPS:
+            if(mode == IndicatorMode::PASS) {
+                led.setOutput(4, Off); //Turn amber off
+                led.setOutput(3, On); //Turn green on
+            }
+            if(mode == IndicatorMode::PREPASS) {
+                led.setOutput(4, Off); //Turn amber off
+                led.setOutput(3, Group); //Blink green with group
+            }
+            if(mode == IndicatorMode::WAITING) {
+                led.setOutput(4, Group); //Blink amber with group
+                led.setOutput(3, Off); //Turn green off
+            }
+            if(mode == IndicatorMode::ERROR) {
+                led.setOutput(4, On); //Turn amber on
+                led.setOutput(3, Off); //Turn green off
+            }
+            if(mode == IndicatorMode::ERROR_CRITICAL) {
+                led.setOutput(4, On); //Turn amber on
+                led.setOutput(3, Off); //Turn green off
+            }
+            break;
+        case IndicatorLight::CELL:
+            if(mode == IndicatorMode::PASS) {
+                led.setOutput(6, Off); //Turn amber off
+                led.setOutput(5, On); //Turn green on
+            }
+            if(mode == IndicatorMode::PREPASS) {
+                led.setOutput(6, Off); //Turn amber off
+                led.setOutput(5, Group); //Blink green with group
+            }
+            if(mode == IndicatorMode::WAITING) {
+                led.setOutput(6, Group); //Blink amber with group
+                led.setOutput(5, Off); //Turn green off
+            }
+            if(mode == IndicatorMode::ERROR) {
+                led.setOutput(6, On); //Turn amber on
+                led.setOutput(5, Off); //Turn green off
+            }
+            if(mode == IndicatorMode::ERROR_CRITICAL) {
+                led.setOutput(6, On); //Turn amber on
+                led.setOutput(5, Off); //Turn green off
+            }
+            break;
+        case IndicatorLight::ALL:
+            if(mode == IndicatorMode::WAITING) {
+                led.setOutputArray(Off); //Turn all LEDs off //DEBUG!
+                // led.setBrightness(6, 50);
+                // led.setBrightness(4, 50);
+                // led.setBrightness(1, 50);
+                led.setOutput(6, Group); //Set CELL amber to blink
+                led.setOutput(4, Group); //Set GPS amber to blink
+                led.setOutput(1, Group); //Set SENSOR amber to blink
+            }
+            if(mode == IndicatorMode::NONE) {
+                led.setOutputArray(Off); //Turn all LEDs off 
+            }
+            break;
+    }
+    return 0; //DEBUG!
 }
 
 bool Kestrel::feedWDT()

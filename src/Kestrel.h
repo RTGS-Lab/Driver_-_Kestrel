@@ -46,6 +46,7 @@ Distributed as-is; no warranty is given.
 
 #include <Sensor.h>
 #include <PCAL9535A.h>
+#include "PCA9634/src/PCA9634.h"
 // #include "MCP7940_Library/src/MCP7940.h"
 #include "DRIVER_-_MCP79412/src/MCP79412.h"
 #include "SparkFun_u-blox_GNSS_Arduino_Library/src/SparkFun_u-blox_GNSS_Arduino_Library.h"
@@ -73,6 +74,7 @@ namespace PinsOB {
 	constexpr uint16_t SD_EN = 12;
 	constexpr uint16_t AUX_EN = 15;
 	constexpr uint16_t CE = 11;
+	constexpr uint16_t LED_EN = 13;
 }
 
 namespace PinsTalon { //For Kestrel v1.1
@@ -103,6 +105,24 @@ namespace TimeSource { //FIX!
 	constexpr uint8_t CELLULAR = 3;
 	constexpr uint8_t GPS = 2; 
 	constexpr uint8_t NONE = 0;
+}
+
+namespace IndicatorLight {
+	constexpr uint8_t SENSORS = 1;
+	constexpr uint8_t GPS = 2;
+	constexpr uint8_t CELL = 3;
+	constexpr uint8_t STAT = 4;
+	constexpr uint8_t ALL = 5;
+}
+
+namespace IndicatorMode {
+	constexpr uint8_t NONE = 0;
+	constexpr uint8_t PASS = 1;
+	constexpr uint8_t WAITING = 2;
+	constexpr uint8_t ERROR = 3;
+	constexpr uint8_t ERROR_CRITICAL = 4;
+	constexpr uint8_t PREPASS = 5;
+	
 }
 
 struct dateTimeStruct {
@@ -152,7 +172,8 @@ class Kestrel: public Sensor
 		// static constexpr uint16_t 
 		
 		dateTimeStruct currentDateTime = {2049, 6, 16, 3, 27, 31, TimeSource::NONE}; //Initialize with dummy time //DEBUG!
-
+		bool statLED(bool state);
+		bool setIndicatorState(uint8_t ledBank, uint8_t mode);
 		uint8_t updateTime();
 		bool feedWDT();
 
@@ -161,6 +182,10 @@ class Kestrel: public Sensor
         PCAL9535A ioTalon;
 		MCP79412 rtc;
 		SFE_UBLOX_GNSS gps;
+		PCA9634 led;
+		const int ledBrightness = 50; //Default to 50% on
+		const int ledPeriod = 500; //Default to 500ms period
+		const int ledOnTime = 250; //Default to 50% duty cycle
         // uint32_t errors[MAX_NUM_ERRORS] = {0};
         // uint8_t numErrors = 0; //Used to track the index of errors array
         // bool errorOverwrite = false; //Used to track if errors have been overwritten in time since last report
