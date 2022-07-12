@@ -106,6 +106,19 @@ String Kestrel::getErrors()
 	return output;
 }
 
+String Kestrel::getData(time_t time)
+{
+    enableI2C_Global(false); //Turn off external I2C
+    enableI2C_OB(true); //Turn on internal I2C
+    enableAuxPower(true); //Turn on aux power 
+    if(gps.getFixType() >= 2) { //Only update if GPS has at least a 2D fix
+        longitude = gps.getLongitude();
+        latitude = gps.getLatitude();
+        posTime = getTime(); //Update time that GPS measure was made
+    }
+    return "{Kestrel:null}";
+}
+
 bool Kestrel::enablePower(uint8_t port, bool state) 
 {
     //FIX! Throw error is port out of range
@@ -370,6 +383,29 @@ String Kestrel::getTimeString()
     // else return "DUMMY"; //FIX!
     else return String((int)currentTime);
     // else return String(currentTime); //Otherwise return normal string val
+}
+
+String Kestrel::getPosLat()
+{
+    if(latitude != 0) return String(latitude*(10E-8)); //Return in degrees if value is legit
+    else return "null"; //Return null if position has not been initalized
+}
+
+String Kestrel::getPosLong()
+{
+    if(longitude != 0) return String(longitude*(10E-8)); //Return in degrees if value if legit
+    else return "null"; //Return null if position has not been initalized
+}
+
+time_t Kestrel::getPosTime()
+{
+    return posTime;
+}
+
+String Kestrel::getPosTimeString()
+{
+    if(posTime > 0) return String((int)posTime); //Return in time of last position measurment if legitimate
+    else return "null"; //Return null if position has not been initalized
 }
 
 bool Kestrel::startTimer(time_t period)

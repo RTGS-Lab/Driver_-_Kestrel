@@ -138,6 +138,7 @@ struct dateTimeStruct {
 class Kestrel: public Sensor
 {
     constexpr static int MAX_NUM_ERRORS = 10; ///<Maximum number of errors to log before overwriting previous errors in buffer
+	const String FIRMWARE_VERSION = "0.0.0"; //FIX! Read from system??
 	
     const uint32_t KESTREL_PORT_RANGE_ERROR = 0x90010300; ///<Kestrel port assignment is out of range
 
@@ -145,6 +146,7 @@ class Kestrel: public Sensor
 
     public:
         Kestrel();
+		SFE_UBLOX_GNSS gps;
         String begin(time_t time, bool &criticalFault, bool &fault);
         bool enablePower(uint8_t port, bool state = true);
         bool enableData(uint8_t port, bool state = true);
@@ -161,7 +163,7 @@ class Kestrel: public Sensor
 		bool waitUntilTimerDone();
 		// time_t getTime();
 		String getTimeString();
-
+		String getData(time_t time);
 		String getErrors();
 		uint8_t totalErrors() {
 			return numErrors + rtc.numErrors; 
@@ -176,12 +178,17 @@ class Kestrel: public Sensor
 		bool setIndicatorState(uint8_t ledBank, uint8_t mode);
 		uint8_t updateTime();
 		bool feedWDT();
+		String getPosLat();
+		String getPosLong();
+		time_t getPosTime();
+		String getPosTimeString();
+
 
     private:
         PCAL9535A ioOB;
         PCAL9535A ioTalon;
 		MCP79412 rtc;
-		SFE_UBLOX_GNSS gps;
+		
 		PCA9634 led;
 		const int ledBrightness = 50; //Default to 50% on
 		const int ledPeriod = 500; //Default to 500ms period
@@ -201,6 +208,10 @@ class Kestrel: public Sensor
 		time_t timegm(struct tm *tm); //Portable implementation
 		time_t maxTimeError = 5; //Max time error allowed between clock sources [seconds]
 		bool timeGood = false; ///<Keep track of the legitimacy of the time based on the last sync attempt
+		long latitude = 0; ///<Used to keep track of the last pos measurment 
+		long longitude = 0; ///<Used to keep track of the last pos measurment 
+		time_t posTime = 0; ///<Time last postition measurment was taken
+
 };		
 
 // constexpr uint8_t Kestrel::numTalonPorts; 
