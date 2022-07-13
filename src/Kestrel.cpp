@@ -187,7 +187,7 @@ bool Kestrel::enableI2C_External(bool state)
 
 bool Kestrel::disablePowerAll()
 {
-    for(int i = 1; i <= 4; i++) {
+    for(int i = 1; i <= 5; i++) {
         enablePower(i, false);
     }
     return false; //DEBUG!
@@ -195,7 +195,7 @@ bool Kestrel::disablePowerAll()
 
 bool Kestrel::disableDataAll()
 {
-    for(int i = 1; i <= 4; i++) {
+    for(int i = 1; i <= 5; i++) {
         enableData(i, false);
     }
     return 0; //DEBUG!
