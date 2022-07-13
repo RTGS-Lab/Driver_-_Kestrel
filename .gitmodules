@@ -10,3 +10,6 @@
 [submodule "src/PCA9634"]
 	path = src/PCA9634
 	url = https://github.com/gemsiot/PCA9634.git
+[submodule "src/PAC1932_Library"]
+	path = src/PAC1932_Library
+	url = https://github.com/bschulz1701/PAC1932_Library.git
