@@ -53,7 +53,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
 	// led.setGroupBrightness(ledBrightness); //Set to 50% brightness
 	led.setGroupBlinkPeriod(ledPeriod); //Set blink period to specified number of ms
 	led.setGroupOnTime(ledOnTime); //Set on time for each blinking period 
-    setIndicatorState(IndicatorLight::ALL,IndicatorMode::WAITING); //Set all to blinking wait
+    // setIndicatorState(IndicatorLight::ALL,IndicatorMode::WAITING); //Set all to blinking wait
     
     if(rtc.begin(true) == 0) criticalFault = true; //Use with external oscilator, set critical fault if not able to connect 
     if(gps.begin() == false) {
@@ -480,10 +480,13 @@ bool Kestrel::setIndicatorState(uint8_t ledBank, uint8_t mode)
     led.setBrightness(3, 25); //Reduce brightness of green LEDs //DEBUG!
     led.setBrightness(5, 25);
     led.setBrightness(1, 25);
+    led.setBrightnessArray(ledBrightness); //Set all LEDs to 50% max brightness
+	led.setGroupBlinkPeriod(ledPeriod); //Set blink period to specified number of ms
+	led.setGroupOnTime(ledOnTime); //Set on time for each blinking period 
     switch(ledBank) {
         case IndicatorLight::SENSORS:
             if(mode == IndicatorMode::PASS) {
-                led.setOutput(0, On); //Turn green on
+                led.setOutput(0, PWM); //Turn green on
                 led.setOutput(1, Off); //Turn amber off
                 led.setOutput(2, Off); //Turn red off
             }
@@ -499,19 +502,19 @@ bool Kestrel::setIndicatorState(uint8_t ledBank, uint8_t mode)
             }
             if(mode == IndicatorMode::ERROR) {
                 led.setOutput(0, Off); //Turn green off
-                led.setOutput(1, On); //Turn amber on
+                led.setOutput(1, PWM); //Turn amber on
                 led.setOutput(2, Off); //Turn red on
             }
             if(mode == IndicatorMode::ERROR_CRITICAL) {
                 led.setOutput(0, Off); //Turn green off
                 led.setOutput(1, Off); //Turn amber off
-                led.setOutput(2, On); //Turn red on
+                led.setOutput(2, PWM); //Turn red on
             }
             break;
         case IndicatorLight::GPS:
             if(mode == IndicatorMode::PASS) {
                 led.setOutput(4, Off); //Turn amber off
-                led.setOutput(3, On); //Turn green on
+                led.setOutput(3, PWM); //Turn green on
             }
             if(mode == IndicatorMode::PREPASS) {
                 led.setOutput(4, Off); //Turn amber off
@@ -522,18 +525,18 @@ bool Kestrel::setIndicatorState(uint8_t ledBank, uint8_t mode)
                 led.setOutput(3, Off); //Turn green off
             }
             if(mode == IndicatorMode::ERROR) {
-                led.setOutput(4, On); //Turn amber on
+                led.setOutput(4, PWM); //Turn amber on
                 led.setOutput(3, Off); //Turn green off
             }
             if(mode == IndicatorMode::ERROR_CRITICAL) {
-                led.setOutput(4, On); //Turn amber on
+                led.setOutput(4, PWM); //Turn amber on
                 led.setOutput(3, Off); //Turn green off
             }
             break;
         case IndicatorLight::CELL:
             if(mode == IndicatorMode::PASS) {
                 led.setOutput(6, Off); //Turn amber off
-                led.setOutput(5, On); //Turn green on
+                led.setOutput(5, PWM); //Turn green on
             }
             if(mode == IndicatorMode::PREPASS) {
                 led.setOutput(6, Off); //Turn amber off
@@ -544,11 +547,11 @@ bool Kestrel::setIndicatorState(uint8_t ledBank, uint8_t mode)
                 led.setOutput(5, Off); //Turn green off
             }
             if(mode == IndicatorMode::ERROR) {
-                led.setOutput(6, On); //Turn amber on
+                led.setOutput(6, PWM); //Turn amber on
                 led.setOutput(5, Off); //Turn green off
             }
             if(mode == IndicatorMode::ERROR_CRITICAL) {
-                led.setOutput(6, On); //Turn amber on
+                led.setOutput(6, PWM); //Turn amber on
                 led.setOutput(5, Off); //Turn green off
             }
             break;
@@ -564,6 +567,21 @@ bool Kestrel::setIndicatorState(uint8_t ledBank, uint8_t mode)
             }
             if(mode == IndicatorMode::NONE) {
                 led.setOutputArray(Off); //Turn all LEDs off 
+            }
+            if(mode == IndicatorMode::INIT) {
+                led.setOutputArray(Off); //Turn all LEDs off //DEBUG!
+                led.setOutput(1, Group); //Blink amber with group
+                led.setOutput(2, Group); //Blink red with group
+                led.setOutput(6, Group); //Blink amber with group
+                led.setOutput(4, Group); //Blink amber with group
+            }
+            if(mode == IndicatorMode::IDLE) {
+                led.setOutputArray(Group); //Turn all LEDs to group blink
+            }
+            if(mode == IndicatorMode::COMMAND) {
+                led.setOutputArray(Group); //Turn all LEDs to group blink
+                led.setGroupBlinkPeriod(100); //Set to very fast blinking
+	            led.setGroupOnTime(25);  
             }
             break;
     }

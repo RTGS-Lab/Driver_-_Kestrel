@@ -123,6 +123,9 @@ namespace IndicatorMode {
 	constexpr uint8_t ERROR = 3;
 	constexpr uint8_t ERROR_CRITICAL = 4;
 	constexpr uint8_t PREPASS = 5;
+	constexpr uint8_t INIT = 6;
+	constexpr uint8_t IDLE = 7;
+	constexpr uint8_t COMMAND = 8;
 	
 }
 
