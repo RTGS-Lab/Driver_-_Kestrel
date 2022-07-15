@@ -50,6 +50,7 @@ Distributed as-is; no warranty is given.
 // #include "MCP7940_Library/src/MCP7940.h"
 #include "DRIVER_-_MCP79412/src/MCP79412.h"
 #include "SparkFun_u-blox_GNSS_Arduino_Library/src/SparkFun_u-blox_GNSS_Arduino_Library.h"
+#include "PAC1932_Library/src/PAC1934.h"
 // #include <GlobalPins.h>
 
 
@@ -182,12 +183,15 @@ class Kestrel: public Sensor
 		String getPosLong();
 		time_t getPosTime();
 		String getPosTimeString();
+		bool configTalonSense();
 
 
     private:
         PCAL9535A ioOB;
         PCAL9535A ioTalon;
 		MCP79412 rtc;
+		PAC1934 csaAlpha;
+		PAC1934 csaBeta;
 		
 		PCA9634 led;
 		const int ledBrightness = 50; //Default to 50% on

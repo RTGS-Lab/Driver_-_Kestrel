@@ -18,7 +18,7 @@ Distributed as-is; no warranty is given.
 
 Kestrel* Kestrel::selfPointer;
 
-Kestrel::Kestrel() : ioOB(0x20), ioTalon(0x21), led(0x52)
+Kestrel::Kestrel() : ioOB(0x20), ioTalon(0x21), led(0x52), csaAlpha(2, 2, 2, 2, 0x18), csaBeta(2, 10, 10, 10, 0x14)
 {
 	// port = talonPort; //Copy to local
 	// version = hardwareVersion; //Copy to local
@@ -37,9 +37,11 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
 
     enableI2C_Global(false); //Turn off external I2C
     enableI2C_OB(true); //Turn on internal I2C
-    enableAuxPower(true); //Turn on aux power 
     if(ioOB.begin() != 0) criticalFault = true;
     if(ioTalon.begin() != 0) criticalFault = true;
+    enableAuxPower(true); //Turn on aux power 
+    csaAlpha.begin();
+    csaBeta.begin();
     // delay(100); //DEBUG! For GPS
     ioOB.pinMode(PinsOB::LED_EN, OUTPUT);
 	ioOB.digitalWrite(PinsOB::LED_EN, LOW); //Turn on LED indicators 
@@ -163,7 +165,7 @@ bool Kestrel::enableI2C_OB(bool state)
 {
     pinMode(Pins::I2C_OB_EN, OUTPUT);
 	digitalWrite(Pins::I2C_OB_EN, state);
-    Wire.reset(); //DEBUG!
+    // Wire.reset(); //DEBUG!
     return false; //DEBUG!
 }
 
@@ -171,7 +173,7 @@ bool Kestrel::enableI2C_Global(bool state)
 {
     pinMode(Pins::I2C_GLOBAL_EN, OUTPUT);
 	digitalWrite(Pins::I2C_GLOBAL_EN, state);
-    Wire.reset(); //DEBUG!
+    // Wire.reset(); //DEBUG!
     return false; //DEBUG!
 }
 
@@ -553,6 +555,22 @@ bool Kestrel::feedWDT()
         // System.reset(); //DEBUG!
         return false;
     }
+}
+
+bool Kestrel::configTalonSense()
+{
+    Serial.println("CONFIG TALON SENSE"); //DEBUG!
+    enableI2C_Global(false);
+    enableI2C_OB(true);
+    csaBeta.SetCurrentDirection(CH4, UNIDIRECTIONAL); //Bulk voltage, unidirectional
+	csaBeta.EnableChannel(CH1, false); //Disable all channels but 4
+	csaBeta.EnableChannel(CH2, false);
+	csaBeta.EnableChannel(CH3, false);
+	csaBeta.EnableChannel(CH4, true);
+    enableI2C_Global(true); //Return to external connection 
+    enableI2C_OB(false);
+    // enableI2C_Global(true); //Connect all together 
+    return false; //DEBUG!
 }
 
 void Kestrel::timechange_handler(system_event_t event, int param)
