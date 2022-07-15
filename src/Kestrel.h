@@ -184,6 +184,7 @@ class Kestrel: public Sensor
 		time_t getPosTime();
 		String getPosTimeString();
 		bool configTalonSense();
+		unsigned long getMessageID();
 
 
     private:

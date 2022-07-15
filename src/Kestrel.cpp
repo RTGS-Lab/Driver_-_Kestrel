@@ -35,8 +35,8 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
 		if(!Wire.isEnabled()) Wire.begin(); //Only initialize I2C if not done already //INCLUDE FOR USE WITH PARTICLE 
 	#endif
 
-    enableI2C_Global(false); //Turn off external I2C
-    enableI2C_OB(true); //Turn on internal I2C
+    bool globState = enableI2C_Global(false); //Turn off external I2C
+    bool obState = enableI2C_OB(true); //Turn on internal I2C
     if(ioOB.begin() != 0) criticalFault = true;
     if(ioTalon.begin() != 0) criticalFault = true;
     enableAuxPower(true); //Turn on aux power 
@@ -74,7 +74,8 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     syncTime(); 
     // Particle.syncTime(); //DEBUG!
     // ioOB.pinMode(PinsOB::)
-
+    enableI2C_Global(globState); //Return to previous state
+    enableI2C_OB(obState);
     return "{}"; //DEBUG!
 }
 
@@ -110,14 +111,16 @@ String Kestrel::getErrors()
 
 String Kestrel::getData(time_t time)
 {
-    enableI2C_Global(false); //Turn off external I2C
-    enableI2C_OB(true); //Turn on internal I2C
+    bool globState = enableI2C_Global(false); //Turn off external I2C
+    bool obState = enableI2C_OB(true); //Turn on internal I2C
     enableAuxPower(true); //Turn on aux power 
     if(gps.getFixType() >= 2) { //Only update if GPS has at least a 2D fix
         longitude = gps.getLongitude();
         latitude = gps.getLatitude();
         posTime = getTime(); //Update time that GPS measure was made
     }
+    enableI2C_Global(globState); //Return to previous state
+    enableI2C_OB(obState);
     return "{Kestrel:null}";
 }
 
@@ -126,14 +129,17 @@ bool Kestrel::enablePower(uint8_t port, bool state)
     //FIX! Throw error is port out of range
     if(port == 5) { //Port for (ext/batter port) is special case
         // return enableAuxPower(state); 
+        return false; //DEBUG!
     }
     if(port == 0 || port > numTalonPorts) throwError(KESTREL_PORT_RANGE_ERROR | portErrorCode);
     else {
-        enableI2C_OB(true);
-        enableI2C_Global(false);
+        bool obState = enableI2C_OB(true);
+        bool globState = enableI2C_Global(false);
         // Wire.reset(); //DEBUG!
         ioTalon.pinMode(PinsTalon::EN[port - 1], OUTPUT);
         ioTalon.digitalWrite(PinsTalon::EN[port - 1], state);
+        enableI2C_Global(globState); //Return to previous state
+        enableI2C_OB(obState);
     }
     
     return false; //DEBUG!
@@ -143,19 +149,22 @@ bool Kestrel::enableData(uint8_t port, bool state)
 {
     //FIX! Throw error is port out of range
     if(port == 5) { //Port for (ext/batter port) is special case
-        enableI2C_Global(state);
-        return enableI2C_External(state); 
+        // if(state) enableI2C_Global(true); //Turn on global
+        enableI2C_External(state); 
+        return false; //DEBUG!
     }
     if(port == 0 || port > numTalonPorts) throwError(KESTREL_PORT_RANGE_ERROR | portErrorCode);
     else {
-        enableI2C_OB(true);
-        enableI2C_Global(false);
+        bool obState = enableI2C_OB(true);
+        bool globState = enableI2C_Global(false);
         // Wire.reset(); //DEBUG!
         ioTalon.pinMode(PinsTalon::SEL[port - 1], OUTPUT);
         ioTalon.digitalWrite(PinsTalon::SEL[port - 1], LOW); //DEBUG!
         ioTalon.pinMode(PinsTalon::I2C_EN[port - 1], OUTPUT);
         ioTalon.digitalWrite(PinsTalon::I2C_EN[port - 1], state);
         // Serial.println(PinsTalon::I2C_EN[port - 1]); //DEBUG!
+        enableI2C_Global(globState); //Return to previous state
+        enableI2C_OB(obState);
     }
     
     return false; //DEBUG!
@@ -163,28 +172,33 @@ bool Kestrel::enableData(uint8_t port, bool state)
 
 bool Kestrel::enableI2C_OB(bool state)
 {
+    bool currentState = digitalRead(Pins::I2C_OB_EN); 
     pinMode(Pins::I2C_OB_EN, OUTPUT);
 	digitalWrite(Pins::I2C_OB_EN, state);
     // Wire.reset(); //DEBUG!
-    return false; //DEBUG!
+    return currentState; 
 }
 
 bool Kestrel::enableI2C_Global(bool state)
 {
+    bool currentState = digitalRead(Pins::I2C_GLOBAL_EN); 
     pinMode(Pins::I2C_GLOBAL_EN, OUTPUT);
 	digitalWrite(Pins::I2C_GLOBAL_EN, state);
     // Wire.reset(); //DEBUG!
-    return false; //DEBUG!
+    return currentState; 
 }
 
 bool Kestrel::enableI2C_External(bool state)
 {
-    enableI2C_Global(false);
-	enableI2C_OB(true);
+    bool globState = enableI2C_Global(false);
+	bool obState = enableI2C_OB(true);
 	//Turn on external I2C port
+    bool currentState = ioOB.digitalRead(PinsOB::I2C_EXT_EN);
 	ioOB.pinMode(PinsOB::I2C_EXT_EN, OUTPUT);
 	ioOB.digitalWrite(PinsOB::I2C_EXT_EN, state);
-    return false; //DEBUG!
+    enableI2C_Global(globState); //Return to previous state
+    enableI2C_OB(obState);
+    return currentState; //DEBUG! How to return failure? Don't both and just throw error??
 }
 
 bool Kestrel::disablePowerAll()
@@ -212,8 +226,9 @@ bool Kestrel::disableDataAll()
 
 bool Kestrel::enableSD(bool state)
 {
-    enableI2C_OB(true);
-    enableI2C_Global(false);
+    bool globState = enableI2C_Global(false);
+	bool obState = enableI2C_OB(true);
+    bool currentState = ioOB.digitalRead(PinsOB::SD_EN);
     if(state) {
         enableAuxPower(true); //Make sure Aux power is on
         ioOB.pinMode(PinsOB::SD_EN, OUTPUT);
@@ -223,16 +238,21 @@ bool Kestrel::enableSD(bool state)
         ioOB.pinMode(PinsOB::SD_EN, OUTPUT);
         ioOB.digitalWrite(PinsOB::SD_EN, LOW);
     }
-    return false; //DEBUG!
+    enableI2C_Global(globState); //Return to previous state
+    enableI2C_OB(obState);
+    return currentState; //DEBUG! How to return failure? Don't both and just throw error??
 }
 
 bool Kestrel::enableAuxPower(bool state)
 {
-    enableI2C_OB(true);
-    enableI2C_Global(false);
+    bool globState = enableI2C_Global(false);
+	bool obState = enableI2C_OB(true);
+    bool currentState = ioOB.digitalRead(PinsOB::AUX_EN);
     ioOB.pinMode(PinsOB::AUX_EN, OUTPUT);
     ioOB.digitalWrite(PinsOB::AUX_EN, state); 
-    return false; //DEBUG!
+    enableI2C_Global(globState); //Return to previous state
+    enableI2C_OB(obState);
+    return currentState; //DEBUG! How to return failure? Don't both and just throw error??
 }
 
 uint8_t Kestrel::updateTime()
@@ -294,9 +314,9 @@ uint8_t Kestrel::syncTime()
     }
 
     ////////// GPS TIME ///////////////////
-    enableAuxPower(true);
-    enableI2C_Global(false);
-    enableI2C_OB(true);
+    bool currentAux = enableAuxPower(true);
+    bool currentGlob = enableI2C_Global(false);
+    bool currentOB = enableI2C_OB(true);
     if(gps.getDateValid() && gps.getTimeValid()) {
         struct tm timeinfo = {0}; //Create struct in C++ time land
         timeinfo.tm_year = gps.getYear() - 1900; //Years since 1900
@@ -318,11 +338,11 @@ uint8_t Kestrel::syncTime()
     Serial.println(rtcTime); //DEBUG!
     Serial.print("Particle Time: ");
     Serial.println(Time.now());  
-
+    uint8_t source = TimeSource::NONE; //Default to none unless otherwise set
     if(abs(rtcTime - gpsTime) < maxTimeError && abs(rtcTime - particleTime) < maxTimeError && rtcTime != 0 && gpsTime != 0 && particleTime != 0) { //If both updated sources match local time
         Serial.println("CLOCK SOURCE: All match");
         timeGood = true;
-        return TimeSource::CELLULAR; //Report cell as the most comprehensive source
+        source = TimeSource::CELLULAR; //Report cell as the most comprehensive source
     }
 
     else if(abs(particleTime - gpsTime) < maxTimeError && gpsTime != 0 && particleTime != 0) { //If both updated variables match 
@@ -330,21 +350,21 @@ uint8_t Kestrel::syncTime()
         rtc.setTime(Time.year(), Time.month(), Time.day(), Time.hour(), Time.minute(), Time.second()); //Set RTC from Cell
         timeGood = true;
         //Throw error
-        return TimeSource::CELLULAR;
+        source = TimeSource::CELLULAR;
     }
     else if(abs(particleTime - rtcTime) < maxTimeError && rtcTime != 0 && particleTime != 0) { //If cell and rtc agree
         Serial.println("CLOCK SOURCE: Cell and local match");
         //Can we set the GPS time??
         //Throw error
         timeGood = true;
-        return TimeSource::CELLULAR;
+        source = TimeSource::CELLULAR;
     }
     else if(abs(gpsTime - rtcTime) < maxTimeError && gpsTime != 0 && rtcTime != 0) { //If gps and rtc agree
         Serial.println("CLOCK SOURCE: GPS and local match");
         Time.setTime(gpsTime); //Set particle time from GPS time
         //Throw error
         timeGood = true;
-        return TimeSource::GPS;
+        source = TimeSource::GPS;
     }
     else { //No two sources agree, very bad!
         
@@ -352,17 +372,23 @@ uint8_t Kestrel::syncTime()
             Serial.println("CLOCK SOURCE: Stale RTC"); //DEBUG!
             Time.setTime(rtc.getTimeUnix()); //Set time from RTC   
             timeGood = true;
-            return TimeSource::RTC;
+            source = TimeSource::RTC;
         }
-        Serial.println("CLOCK SOURCE: NONE"); //DEBUG!
-        criticalFault = true; //FIX??
-        timeGood = false; 
-        Time.setTime(946684800); //Set time back to year 2000
-        return TimeSource::NONE;
-        //Throw error!
+        else {
+            Serial.println("CLOCK SOURCE: NONE"); //DEBUG!
+            criticalFault = true; //FIX??
+            timeGood = false; 
+            Time.setTime(946684800); //Set time back to year 2000
+            source = TimeSource::NONE;
+            //Throw error!
+        }
+        
     }
     // return false; //DEBUG!
-    return TimeSource::NONE;
+    enableAuxPower(currentAux); //Return all to previous states
+    enableI2C_Global(currentGlob);
+    enableI2C_OB(currentOB);
+    return source;
 }
 
 time_t Kestrel::getTime()
@@ -413,13 +439,15 @@ String Kestrel::getPosTimeString()
 bool Kestrel::startTimer(time_t period)
 {
     if(period == 0) period = defaultPeriod; //If no period is specified, assign default period 
-    enableI2C_OB(true);
-    enableI2C_Global(false);
+    bool currentOB = enableI2C_OB(true);
+    bool currentGlob = enableI2C_Global(false);
     rtc.setAlarm(period); //Set alarm from current time
     timerStart = millis(); 
     Serial.print("Time Start: "); //DEBUG!
     Serial.println(timerStart);
     logPeriod = period;
+    enableI2C_Global(currentGlob);
+    enableI2C_OB(currentOB);
     return false; //DEBUG!
 }
 
@@ -436,17 +464,19 @@ bool Kestrel::waitUntilTimerDone()
 
 bool Kestrel::statLED(bool state)
 {
-    enableI2C_Global(false);
-	enableI2C_OB(true);
+    bool currentGlob = enableI2C_Global(false);
+	bool currentOB = enableI2C_OB(true);
     if(state) led.setOutput(7, On); //Turn stat on
     else led.setOutput(7, Off); //Turn stat off
+    enableI2C_Global(currentGlob); //Reset to previous state
+    enableI2C_OB(currentOB); 
     return false; //DEBUG!
 }
 
 bool Kestrel::setIndicatorState(uint8_t ledBank, uint8_t mode)
 {
-    enableI2C_Global(false);
-	enableI2C_OB(true);
+    bool currentGlob = enableI2C_Global(false);
+	bool currentOB = enableI2C_OB(true);
     led.setBrightness(3, 25); //Reduce brightness of green LEDs //DEBUG!
     led.setBrightness(5, 25);
     led.setBrightness(1, 25);
@@ -537,7 +567,17 @@ bool Kestrel::setIndicatorState(uint8_t ledBank, uint8_t mode)
             }
             break;
     }
+    enableI2C_Global(currentGlob); //Reset to previous state
+    enableI2C_OB(currentOB); 
     return 0; //DEBUG!
+}
+
+unsigned long Kestrel::getMessageID()
+{
+    unsigned long currentTime = getTime(); //Grab current UNIX time
+    //Create a hash between getTime (current UNIX time, 32 bit) and seconds since program start (use seconds to ensure demoninator is always smaller to not lose power of mod)
+    if(currentTime != 0) return getTime() % (millis() / 1000); //If current time is valid, create the hash as usual
+    else return HAL_RNG_GetRandomNumber(); //Else return cryptographic 32 bit random 
 }
 
 bool Kestrel::feedWDT()
@@ -560,15 +600,15 @@ bool Kestrel::feedWDT()
 bool Kestrel::configTalonSense()
 {
     Serial.println("CONFIG TALON SENSE"); //DEBUG!
-    enableI2C_Global(false);
-    enableI2C_OB(true);
+    bool currentGlob = enableI2C_Global(false);
+	bool currentOB = enableI2C_OB(true);
     csaBeta.SetCurrentDirection(CH4, UNIDIRECTIONAL); //Bulk voltage, unidirectional
 	csaBeta.EnableChannel(CH1, false); //Disable all channels but 4
 	csaBeta.EnableChannel(CH2, false);
 	csaBeta.EnableChannel(CH3, false);
 	csaBeta.EnableChannel(CH4, true);
-    enableI2C_Global(true); //Return to external connection 
-    enableI2C_OB(false);
+    enableI2C_Global(currentGlob); //Reset to previous state
+    enableI2C_OB(currentOB); 
     // enableI2C_Global(true); //Connect all together 
     return false; //DEBUG!
 }
