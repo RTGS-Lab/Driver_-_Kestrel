@@ -121,7 +121,7 @@ String Kestrel::getData(time_t time)
     }
     enableI2C_Global(globState); //Return to previous state
     enableI2C_OB(obState);
-    return "{Kestrel:null}";
+    return "{\"Kestrel\":null}";
 }
 
 bool Kestrel::enablePower(uint8_t port, bool state) 
