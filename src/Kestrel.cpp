@@ -158,10 +158,34 @@ bool Kestrel::enableData(uint8_t port, bool state)
         bool obState = enableI2C_OB(true);
         bool globState = enableI2C_Global(false);
         // Wire.reset(); //DEBUG!
-        ioTalon.pinMode(PinsTalon::SEL[port - 1], OUTPUT);
-        ioTalon.digitalWrite(PinsTalon::SEL[port - 1], LOW); //DEBUG!
+        // ioTalon.pinMode(PinsTalon::SEL[port - 1], OUTPUT);
+        // ioTalon.digitalWrite(PinsTalon::SEL[port - 1], LOW); //DEBUG!
         ioTalon.pinMode(PinsTalon::I2C_EN[port - 1], OUTPUT);
         ioTalon.digitalWrite(PinsTalon::I2C_EN[port - 1], state);
+        // Serial.println(PinsTalon::I2C_EN[port - 1]); //DEBUG!
+        enableI2C_Global(globState); //Return to previous state
+        enableI2C_OB(obState);
+    }
+    
+    return false; //DEBUG!
+}
+
+bool Kestrel::setDirection(uint8_t port, bool sel)
+{
+    if(port == 5) { //Port for (ext/batter port) is special case
+        // if(state) enableI2C_Global(true); //Turn on global
+        // enableI2C_External(state); 
+        return false; //DEBUG!
+    }
+    if(port == 0 || port > numTalonPorts) throwError(KESTREL_PORT_RANGE_ERROR | portErrorCode);
+    else {
+        bool obState = enableI2C_OB(true);
+        bool globState = enableI2C_Global(false);
+        // Wire.reset(); //DEBUG!
+        ioTalon.pinMode(PinsTalon::SEL[port - 1], OUTPUT);
+        ioTalon.digitalWrite(PinsTalon::SEL[port - 1], sel); //DEBUG!
+        // ioTalon.pinMode(PinsTalon::I2C_EN[port - 1], OUTPUT);
+        // ioTalon.digitalWrite(PinsTalon::I2C_EN[port - 1], state);
         // Serial.println(PinsTalon::I2C_EN[port - 1]); //DEBUG!
         enableI2C_Global(globState); //Return to previous state
         enableI2C_OB(obState);
@@ -337,7 +361,7 @@ uint8_t Kestrel::syncTime()
     Serial.print("RTC Time: ");
     Serial.println(rtcTime); //DEBUG!
     Serial.print("Particle Time: ");
-    Serial.println(Time.now());  
+    Serial.println(particleTime);  
     uint8_t source = TimeSource::NONE; //Default to none unless otherwise set
     if(abs(rtcTime - gpsTime) < maxTimeError && abs(rtcTime - particleTime) < maxTimeError && rtcTime != 0 && gpsTime != 0 && particleTime != 0) { //If both updated sources match local time
         Serial.println("CLOCK SOURCE: All match");
@@ -596,6 +620,36 @@ unsigned long Kestrel::getMessageID()
     //Create a hash between getTime (current UNIX time, 32 bit) and seconds since program start (use seconds to ensure demoninator is always smaller to not lose power of mod)
     if(currentTime != 0) return getTime() % (millis() / 1000); //If current time is valid, create the hash as usual
     else return HAL_RNG_GetRandomNumber(); //Else return cryptographic 32 bit random 
+}
+
+bool Kestrel::testForBat()
+{
+    bool currentGlob = enableI2C_Global(false);
+	bool currentOB = enableI2C_OB(true);
+    ioOB.pinMode(PinsOB::CE, OUTPUT);
+    ioOB.pinMode(PinsOB::CSA_EN, OUTPUT);
+    ioOB.digitalWrite(PinsOB::CE, HIGH); //Disable charging
+    ioOB.digitalWrite(PinsOB::CSA_EN, HIGH); //Enable voltage sense
+    csaAlpha.EnableChannel(CH1, true);
+    csaAlpha.Update(); //Force new readings 
+    delay(5000); //Wait for cap to discharge 
+    // csaAlpha.SetCurrentDirection(CH1, BIDIRECTIONAL);
+    float vBat = csaAlpha.GetBusVoltage(CH1);
+    ioOB.digitalWrite(PinsOB::CE, LOW); //Turn charging back on
+    bool result = false;
+    if(vBat < 2.0) { //If less than 2V (min bat voltage) give error 
+        //THROW ERROR???
+        result = false;
+    }
+    else result = true;
+    enableI2C_Global(currentGlob); //Reset to previous state
+    enableI2C_OB(currentOB); 
+    Serial.print("BATTERY STATE: "); //DEBUG!
+    Serial.print(vBat);
+    Serial.print("\t");
+    Serial.println(result);
+    return result;
+    // enableI2C_External(true);
 }
 
 bool Kestrel::feedWDT()

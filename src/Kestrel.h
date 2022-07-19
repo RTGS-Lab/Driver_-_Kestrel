@@ -76,6 +76,7 @@ namespace PinsOB {
 	constexpr uint16_t AUX_EN = 15;
 	constexpr uint16_t CE = 11;
 	constexpr uint16_t LED_EN = 13;
+	constexpr uint16_t CSA_EN = 14;
 }
 
 namespace PinsTalon { //For Kestrel v1.1
@@ -154,6 +155,7 @@ class Kestrel: public Sensor
         String begin(time_t time, bool &criticalFault, bool &fault);
         bool enablePower(uint8_t port, bool state = true);
         bool enableData(uint8_t port, bool state = true);
+		bool setDirection(uint8_t port, bool sel);
         bool disablePowerAll();
         bool disableDataAll();
         bool enableI2C_OB(bool state = true);
@@ -188,6 +190,7 @@ class Kestrel: public Sensor
 		String getPosTimeString();
 		bool configTalonSense();
 		unsigned long getMessageID();
+		bool testForBat();
 
 
     private:
