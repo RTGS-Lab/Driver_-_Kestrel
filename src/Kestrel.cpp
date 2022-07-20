@@ -417,7 +417,7 @@ uint8_t Kestrel::syncTime()
 
 time_t Kestrel::getTime()
 {
-    if(!Time.isValid() || timeGood) { //If time has not been synced, do so now
+    if(!Time.isValid() || !timeGood) { //If time has not been synced, do so now
         syncTime();
     }
     if(Time.isValid() && timeGood) { //If time is good, report current value
