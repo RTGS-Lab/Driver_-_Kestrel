@@ -158,6 +158,7 @@ class Kestrel: public Sensor
 		bool setDirection(uint8_t port, bool sel);
         bool disablePowerAll();
         bool disableDataAll();
+		bool getFault(uint8_t pin);
         bool enableI2C_OB(bool state = true);
         bool enableI2C_Global(bool state = true);
 		bool enableI2C_External(bool state = true);

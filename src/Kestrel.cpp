@@ -194,6 +194,26 @@ bool Kestrel::setDirection(uint8_t port, bool sel)
     return false; //DEBUG!
 }
 
+bool Kestrel::getFault(uint8_t port) 
+{
+    if(port == 5) { //Port for (ext/batter port) is special case
+        return false; //DEBUG!
+    }
+    if(port == 0 || port > numTalonPorts) throwError(KESTREL_PORT_RANGE_ERROR | portErrorCode);
+    else {
+        bool state = true;
+        bool globState = enableI2C_Global(false);
+        bool obState = enableI2C_OB(true);
+        if(ioTalon.digitalRead(PinsTalon::EN[port - 1]) == HIGH) state = false; //If fault line is high, return false for no fault 
+        else state = true; //If there is a read failure or otherwise unable to read, assume a fault
+        enableI2C_Global(globState); //Return to previous state
+        enableI2C_OB(obState);
+        return state;
+    }
+    return true;
+    
+}
+
 bool Kestrel::enableI2C_OB(bool state)
 {
     bool currentState = digitalRead(Pins::I2C_OB_EN); 
