@@ -143,11 +143,12 @@ struct dateTimeStruct {
 class Kestrel: public Sensor
 {
     constexpr static int MAX_NUM_ERRORS = 10; ///<Maximum number of errors to log before overwriting previous errors in buffer
-	const String FIRMWARE_VERSION = "0.0.0"; //FIX! Read from system??
+	const String FIRMWARE_VERSION = "1.0.0"; //FIX! Read from system??
 	
     const uint32_t KESTREL_PORT_RANGE_ERROR = 0x90010300; ///<Kestrel port assignment is out of range
 	const uint32_t CSA_INIT_FAIL = 0x100500F0; ///<Failure to initialize CSA Alpha or CSA Beta
-	
+	const uint32_t GPS_INIT_FAIL = 0x100A00F8; ///<Failure to initialize the onboard GPS
+	const uint32_t GPS_READ_FAIL = 0x100B00F8; ///<Failure to read from the onboard GPS
 
     public:
         Kestrel();
@@ -222,6 +223,9 @@ class Kestrel: public Sensor
 		time_t timegm(struct tm *tm); //Portable implementation
 		time_t maxTimeError = 5; //Max time error allowed between clock sources [seconds]
 		bool timeGood = false; ///<Keep track of the legitimacy of the time based on the last sync attempt
+		uint8_t timeSource = 0; ///<Keep track of where the time is coming from
+		time_t timeSyncVals[3] = {0}; ///<Keep track of what the values of each device where the last time syncTime was called
+		time_t lastTimeSync = 0; ///<Keep track of when the last time sync occoured 
 		long latitude = 0; ///<Used to keep track of the last pos measurment 
 		long longitude = 0; ///<Used to keep track of the last pos measurment 
 		time_t posTime = 0; ///<Time last postition measurment was taken

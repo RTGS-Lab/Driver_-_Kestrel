@@ -130,6 +130,61 @@ String Kestrel::getData(time_t time)
     return "{\"Kestrel\":null}";
 }
 
+String Kestrel::getMetadata()
+{
+    //RTC UUID
+    //GPS SN
+    //B402 ID/SN
+    //File names?? -> this goes in file handler? 
+    //SD info?? -> this goes in file handler?
+    //IDs of onboard sensors (if any have them)
+        //SHT40
+    //
+
+    bool auxState = enableAuxPower(true); //Turn on AUX power for GPS
+    bool globState = enableI2C_Global(false); //Turn off external I2C
+    bool obState = enableI2C_OB(true); //Turn on internal I2C
+    String metadata = "{\"Kestrel\":{";
+    ////////// ADD GPS INFO
+    // if(gps.begin() == false) throwError(GPS_INIT_FAIL);
+    // else {
+    //     gps.setI2COutput(COM_TYPE_UBX); //Set the I2C port to output UBX only (turn off NMEA noise)
+    //     uint8_t customPayload[MAX_PAYLOAD_SIZE]; // This array holds the payload data bytes. MAX_PAYLOAD_SIZE defaults to 256. The CFG_RATE payload is only 6 bytes!
+    //     gps.setPacketCfgPayloadSize(MAX_PAYLOAD_SIZE);
+    //     ubxPacket customCfg = {0, 0, 0, 0, 0, customPayload, 0, 0, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED};
+    //     customCfg.cls = UBX_CLASS_CFG; // This is the message Class
+    //     customCfg.id = UBX_MON_VER; // This is the message ID
+    //     customCfg.len = 0; // Setting the len (length) to zero let's us poll the current settings
+    //     customCfg.startingSpot = 0; // Always set the startingSpot to zero (unless you really know what you are doing)
+    //     uint16_t maxWait = 250; // Wait for up to 250ms (Serial may need a lot longer e.g. 1100)
+    //     if (gps.sendCommand(&customCfg, maxWait) != SFE_UBLOX_STATUS_DATA_RECEIVED) throwError(GPS_READ_FAIL); // We are expecting data and an ACK, throw error otherwise
+
+    // }
+
+    String rtcUUID = rtc.getUUIDString(); 
+    if(!rtcUUID.equals("null")) rtcUUID = "\"" + rtcUUID + "\""; //If not null, wrap with quotes for JSON, otherwise leave as null 
+    metadata = metadata + "\"RTC UUID\":" + rtcUUID + ","; //Append RTC UUID
+
+    /////// Particle info //////////// 
+    // metadata = metadata + "\"OS\":\"" + System.version() + "\",";
+    // metadata = metadata + "\"ID\":\"" + System.deviceID() + "\",";
+    if(PLATFORM_ID == PLATFORM_BSOM) metadata = metadata + "\"Model\":\"BSoM\","; //Report BSoM
+    else if (PLATFORM_ID == PLATFORM_B5SOM) metadata = metadata + "\"Model\":\"B5SoM\","; //Report B5SoM
+    else metadata = metadata + "\"Model\":null,"; //Report null if for some reason the firmware is running on another device 
+
+    ///////// ADD SHT40!
+
+	
+	metadata = metadata + "\"Firmware\":\"v" + FIRMWARE_VERSION + "\","; //Report firmware version as modded BCD
+	metadata = metadata + "\"Pos\":[15]"; //Concatonate position 
+	metadata = metadata + "}}"; //CLOSE  
+    enableAuxPower(auxState); //Return to previous state
+    enableI2C_Global(globState); 
+    enableI2C_OB(obState);
+	return metadata; 
+	return ""; //DEBUG!
+}
+
 String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 {
     bool globState = enableI2C_Global(false); //Turn off external I2C
@@ -323,6 +378,10 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 
 	if(diagnosticLevel <= 5) {
 		output = output + "\"lvl-5\":{"; //OPEN JSON BLOB
+        output = output + "\"Time Source\":" + String(timeSource) + ","; //Report the time souce selected from the last sync
+        output = output + "\"Times\":[" + String((int)timeSyncVals[0]) + "," + String((int)timeSyncVals[1]) + "," + String((int)timeSyncVals[2]) + "],"; //Add reported times from last sync
+        output = output + "\"Last Sync\":" + String((int)lastTimeSync) + ",";
+        output = output + "\"OB\":" + ioOB.readBus() + ",\"Talon\":" + ioTalon.readBus(); //Report the bus readings from the IO expanders
 		// digitalWrite(KestrelPins::PortBPins[talonPort], HIGH); //Connect to internal I2C
 		// disableDataAll(); //Turn off all data 
 		// digitalWrite(KestrelPins::PortBPins[talonPort], HIGH); //Connect to internal I2C
@@ -639,7 +698,9 @@ uint8_t Kestrel::syncTime()
         timeSyncRequested = false; //Release control of time sync override 
         Serial.print("Cell Time: "); 
         Serial.println(particleTime);
+        timeSyncVals[0] = Time.now(); //Grab last time
     }
+    else timeSyncVals[0] = 0; //Clear if not updated
 
     ////////// GPS TIME ///////////////////
     bool currentAux = enableAuxPower(true);
@@ -656,7 +717,9 @@ uint8_t Kestrel::syncTime()
         gpsTime = timegm(&timeinfo); //Convert struct to unix time
         Serial.print("GPS Time: ");
         Serial.println(gpsTime); //DEBUG!
+        timeSyncVals[1] = gpsTime; //Grab last time
     }
+    else timeSyncVals[1] = 0; //Clear if not updated
 
 	
 
@@ -666,6 +729,7 @@ uint8_t Kestrel::syncTime()
     Serial.println(rtcTime); //DEBUG!
     Serial.print("Particle Time: ");
     Serial.println(particleTime);  
+    timeSyncVals[2] = rtcTime; //Grab last time
     uint8_t source = TimeSource::NONE; //Default to none unless otherwise set
     if(abs(rtcTime - gpsTime) < maxTimeError && abs(rtcTime - particleTime) < maxTimeError && rtcTime != 0 && gpsTime != 0 && particleTime != 0) { //If both updated sources match local time
         Serial.println("CLOCK SOURCE: All match");
@@ -712,6 +776,8 @@ uint8_t Kestrel::syncTime()
         }
         
     }
+    if(source != TimeSource::NONE && source != TimeSource::RTC) lastTimeSync = getTime(); //If time has been sourced, update the last sync time
+    else lastTimeSync = 0; //Otherwise, set back to unknown time
     // return false; //DEBUG!
     enableAuxPower(currentAux); //Return all to previous states
     enableI2C_Global(currentGlob);
