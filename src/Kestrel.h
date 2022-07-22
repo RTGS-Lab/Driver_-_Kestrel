@@ -146,7 +146,7 @@ class Kestrel: public Sensor
 	const String FIRMWARE_VERSION = "0.0.0"; //FIX! Read from system??
 	
     const uint32_t KESTREL_PORT_RANGE_ERROR = 0x90010300; ///<Kestrel port assignment is out of range
-
+	const uint32_t CSA_INIT_FAIL = 0x100500F0; ///<Failure to initialize CSA Alpha or CSA Beta
 	
 
     public:
@@ -172,6 +172,8 @@ class Kestrel: public Sensor
 		String getTimeString();
 		String getData(time_t time);
 		String getErrors();
+		String getMetadata();
+		String selfDiagnostic(uint8_t diagnosticLevel, time_t time);
 		uint8_t totalErrors() {
 			return numErrors + rtc.numErrors; 
 		}
@@ -223,6 +225,7 @@ class Kestrel: public Sensor
 		long latitude = 0; ///<Used to keep track of the last pos measurment 
 		long longitude = 0; ///<Used to keep track of the last pos measurment 
 		time_t posTime = 0; ///<Time last postition measurment was taken
+		bool initDone = false; //Used to keep track if the initaliztion has run - used by hasReset() 
 
 };		
 

@@ -48,13 +48,16 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     ioOB.pinMode(PinsOB::LED_EN, OUTPUT);
 	ioOB.digitalWrite(PinsOB::LED_EN, LOW); //Turn on LED indicators 
     led.begin();
-    led.setOutputMode(OpenDrain); //Set device to use open drain outputs
-    led.setGroupMode(Blink); //Set system to blinking mode
-    led.setOutputArray(Off); //Turn all off by default
-    led.setBrightnessArray(ledBrightness); //Set all LEDs to 50% max brightness
-	// led.setGroupBrightness(ledBrightness); //Set to 50% brightness
-	led.setGroupBlinkPeriod(ledPeriod); //Set blink period to specified number of ms
-	led.setGroupOnTime(ledOnTime); //Set on time for each blinking period 
+    if(!initDone) { //Only set state if not done already
+        led.setOutputMode(OpenDrain); //Set device to use open drain outputs
+        led.setGroupMode(Blink); //Set system to blinking mode
+        led.setOutputArray(Off); //Turn all off by default
+        led.setBrightnessArray(ledBrightness); //Set all LEDs to 50% max brightness
+        // led.setGroupBrightness(ledBrightness); //Set to 50% brightness
+        led.setGroupBlinkPeriod(ledPeriod); //Set blink period to specified number of ms
+        led.setGroupOnTime(ledOnTime); //Set on time for each blinking period 
+    }
+    
     // setIndicatorState(IndicatorLight::ALL,IndicatorMode::WAITING); //Set all to blinking wait
     
     if(rtc.begin(true) == 0) criticalFault = true; //Use with external oscilator, set critical fault if not able to connect 
@@ -69,7 +72,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     // if(Particle.connected() == false) criticalFault = true; //If not connected to cell set critical error
     if(criticalFault) setIndicatorState(IndicatorLight::STAT, IndicatorMode::ERROR); //If there is a critical fault, set the stat light
     for(int i = 1; i <= 4; i++) {
-        enablePower(i, false); //Default all power to off
+        enablePower(i, true); //Default all power to on
         enableData(i, false); //Default all data to off
     }
     
@@ -78,6 +81,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     // ioOB.pinMode(PinsOB::)
     enableI2C_Global(globState); //Return to previous state
     enableI2C_OB(obState);
+    initDone = true;
     return "{}"; //DEBUG!
 }
 
@@ -124,6 +128,284 @@ String Kestrel::getData(time_t time)
     enableI2C_Global(globState); //Return to previous state
     enableI2C_OB(obState);
     return "{\"Kestrel\":null}";
+}
+
+String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
+{
+    bool globState = enableI2C_Global(false); //Turn off external I2C
+    bool obState = enableI2C_OB(true); //Turn on internal I2C
+	String output = "{\"Kestrel\":{";
+	if(diagnosticLevel == 0) {
+		//TBD
+		output = output + "\"lvl-0\":{},";
+	}
+
+	if(diagnosticLevel <= 1) {
+		//TBD
+		output = output + "\"lvl-1\":{},";
+	}
+
+	if(diagnosticLevel <= 2) {
+		//TBD
+		output = output + "\"lvl-2\":{},";
+	}
+
+	if(diagnosticLevel <= 3) {
+		//TBD
+		// Serial.println(millis()); //DEBUG!
+		output = output + "\"lvl-3\":{"; //OPEN JSON BLOB
+		// /////// TEST I2C WITH LOOPBACK ////////////
+		// output = output + "\"I2C_PORT_FAIL\":["; 
+		// disableDataAll(); //Turn off all data 
+		// digitalWrite(KestrelPins::PortBPins[talonPort], LOW); //Connect to external I2C
+		// Wire.beginTransmission(0x22);
+		// int error = Wire.endTransmission(); //Get error from write to empty bus
+		// if(error == 0) throwError(I2C_OB_ISO_FAIL | talonPortErrorCode); //We should not be able to connect to IO exp in this state, if we can throw error 
+		// digitalWrite(KestrelPins::PortBPins[talonPort], HIGH); //Connect to internal I2C
+		// ioAlpha.digitalWrite(pinsAlpha::LOOPBACK_EN, HIGH); //Connect loopback 
+		// for(int i = 0; i <= numPorts; i++) { //Iterate over each port
+		// 	int totalErrors = 0; //Track how many of the test calls fail
+		// 	if(i > 0) {
+		// 		enablePower(i, true); //Turn on power to a given power after testing the base bus
+		// 		enableData(i, true); //Turn on data to a given port after testing the base bus
+		// 	}
+		// 	digitalWrite(KestrelPins::PortBPins[talonPort], LOW); //Connect to external I2C (w/loopback enabled, so it is a combined bus now)
+		// 	for(int adr = 0; adr < sizeof(expectedI2CVals); adr++) { //Check for addresses present 
+		// 		Wire.beginTransmission(expectedI2CVals[adr]); //Check for each expected address
+		// 		// Wire.write(0x00);
+		// 		int error = Wire.endTransmission();
+		// 		if(error == 2) { //If bad bus error detected 
+		// 			// Serial.print("I2C Error Detected: "); //DEBUG!
+		// 			// Serial.println(error);
+		// 			totalErrors++; //If a failure occours, increment error count
+		// 		}
+		// 		// delay(1); //DEBUG!
+		// 	}
+		// 	Serial.print("Total Errors: "); //DEBUG!
+		// 	Serial.println(totalErrors);
+		// 	if(totalErrors > 0) { //If any bus failures were detected 
+		// 		throwError(I2C_PORT_FAIL | talonPortErrorCode | i); //Throw error for the port under test
+		// 		output = output + String(i) + ",";
+		// 	}
+		// 	if(i > 0) enableData(i, false); //Disable bus again
+		// }
+		// if(output.substring(output.length() - 1).equals(",")) {
+		// 	output = output.substring(0, output.length() - 1); //Trim trailing ',' if present
+		// }
+		// output = output + "]"; //Close I2C port array
+		// digitalWrite(KestrelPins::PortBPins[talonPort], HIGH); //Connect to internal I2C
+		// ioAlpha.digitalWrite(pinsAlpha::LOOPBACK_EN, LOW); //Disable loopback 
+		// digitalWrite(KestrelPins::PortBPins[talonPort], LOW); //Return to default external connecton
+
+		output = output + "},"; //CLOSE JSON BLOB
+		// return output + ",\"Pos\":[" + String(port) + "]}}";
+		// return output;
+
+ 	}
+
+	if(diagnosticLevel <= 4) {
+		// String output = selfDiagnostic(5); //Call the lower level of self diagnostic 
+		// output = output.substring(0,output.length() - 1); //Trim off closing brace
+		output = output + "\"lvl-4\":{"; //OPEN JSON BLOB
+
+		// ioSense.begin(); //Initalize voltage sensor IO expander
+		///////////// SENSE VOLTAGE AND CURRENT FOR PORTS ///////////
+		// for(int p = 1; p <= numTalonPorts; p++) {
+		// 	enablePower(p, true); //Turn on power to all ports before measuring //DEBUG!
+		// }
+		// digitalWrite(KestrelPins::PortBPins[talonPort], HIGH); //Connect to internal I2C
+
+		// for(int i = pinsSense::MUX_SEL0; i <= pinsSense::MUX_EN; i++) { //Set all pins to output
+		// 	ioSense.pinMode(i, OUTPUT); 
+		// }
+		// ioAlpha.digitalWrite(pinsAlpha::SENSE_EN, HIGH); //Make sure 3v3 Sense is turned on
+		// ioSense.digitalWrite(pinsSense::MUX_EN, LOW); //Turn MUX on 
+		// int SenseError = adcSense.Begin(); //Initialize ADC 
+        ioOB.digitalWrite(PinsOB::CSA_EN, HIGH); //Enable CSA GPIO control
+        bool initA = csaAlpha.begin();
+        bool initB = csaBeta.begin();
+		if(initA == true || initB == true) { //Only proceed if one of the ADCs connects correctly
+			// adcSense.SetResolution(18); //Set to max resolution (we paid for it right?) 
+            //Setup CSAs
+            if(initA == true) {
+                csaAlpha.enableChannel(Channel::CH1, true); //Enable all channels
+                csaAlpha.enableChannel(Channel::CH2, true);
+                csaAlpha.enableChannel(Channel::CH3, true);
+                csaAlpha.enableChannel(Channel::CH4, true);
+                csaAlpha.setCurrentDirection(Channel::CH1, BIDIRECTIONAL);
+                csaAlpha.setCurrentDirection(Channel::CH2, UNIDIRECTIONAL);
+                csaAlpha.setCurrentDirection(Channel::CH3, UNIDIRECTIONAL);
+                csaAlpha.setCurrentDirection(Channel::CH4, UNIDIRECTIONAL);
+            }
+
+            if(initB == true) {
+                csaBeta.enableChannel(Channel::CH1, true); //Enable all channels
+                csaBeta.enableChannel(Channel::CH2, true);
+                csaBeta.enableChannel(Channel::CH3, true);
+                csaBeta.enableChannel(Channel::CH4, true);
+                csaBeta.setCurrentDirection(Channel::CH1, UNIDIRECTIONAL);
+                csaBeta.setCurrentDirection(Channel::CH2, UNIDIRECTIONAL);
+                csaBeta.setCurrentDirection(Channel::CH3, UNIDIRECTIONAL);
+                csaBeta.setCurrentDirection(Channel::CH4, UNIDIRECTIONAL);
+            }
+			output = output + "\"PORT_V\":["; //Open group
+			// ioSense.digitalWrite(pinsSense::MUX_SEL2, LOW); //Read voltages
+            if(initA == true) {
+                // csaAlpha.enableChannel(Channel::CH1, true); //Enable all channels
+                // csaAlpha.enableChannel(Channel::CH2, true);
+                // csaAlpha.enableChannel(Channel::CH3, true);
+                // csaAlpha.enableChannel(Channel::CH4, true);
+                for(int i = 0; i < 4; i++){ //Increment through all ports
+                    output = output + String(csaAlpha.getBusVoltage(Channel::CH1 + i, true), 6); //Get bus voltage with averaging 
+                    output = output + ","; //Append comma 
+                }
+            }
+            else output = output + "null,null,null,null,"; //Append nulls if can't connect to csa alpha
+
+			if(initB == true) {
+                
+                // delay(1000); //Wait for new data //DEBUG!
+                for(int i = 0; i < 4; i++){ //Increment through all ports
+                    output = output + String(csaBeta.getBusVoltage(Channel::CH1 + i, true), 6); //Get bus voltage with averaging 
+                    if(i < 3) output = output + ","; //Append comma if not the last reading
+                }
+            }
+            else {
+                output = output + "null,null,null,null"; //Append nulls if can't connect to csa beta
+                throwError(CSA_INIT_FAIL | 0xB00); //Throw error for ADC beta failure
+            }
+
+			output = output + "],"; //Close group
+			output = output + "\"PORT_I\":["; //Open group
+            if(initA == true) {
+                // csaAlpha.enableChannel(Channel::CH1, true); //Enable all channels
+                // csaAlpha.enableChannel(Channel::CH2, true);
+                // csaAlpha.enableChannel(Channel::CH3, true);
+                // csaAlpha.enableChannel(Channel::CH4, true);
+                for(int i = 0; i < 4; i++){ //Increment through all ports
+                    output = output + String(csaAlpha.getCurrent(Channel::CH1 + i, true), 6); //Get bus voltage with averaging 
+                    output = output + ","; //Append comma 
+                }
+            }
+            else {
+                output = output + "null,null,null,null,"; //Append nulls if can't connect to csa alpha
+                throwError(CSA_INIT_FAIL | 0xA00); //Throw error for ADC failure
+            }
+
+			if(initB == true) {
+                // csaBeta.enableChannel(Channel::CH1, true); //Enable all channels
+                // csaBeta.enableChannel(Channel::CH2, true);
+                // csaBeta.enableChannel(Channel::CH3, true);
+                // csaBeta.enableChannel(Channel::CH4, true);
+                for(int i = 0; i < 4; i++){ //Increment through all ports
+                    output = output + String(csaBeta.getCurrent(Channel::CH1 + i, true), 6); //Get bus voltage with averaging 
+                    if(i < 3) output = output + ","; //Append comma if not the last reading
+                }
+            }
+            else {
+                output = output + "null,null,null,null"; //Append nulls if can't connect to csa beta
+                throwError(CSA_INIT_FAIL | 0xB00); //Throw error for ADC failure
+            }
+			output = output + "]"; //Close group
+		}
+		else { //If unable to initialzie ADC
+			output = output + "\"PORT_V\":[null],\"PORT_I\":[null]";
+			throwError(CSA_INIT_FAIL); //Throw error for global CSA failure
+		}
+		// ioSense.digitalWrite(pinsSense::MUX_EN, HIGH); //Turn MUX back off 
+		// digitalWrite(KestrelPins::PortBPins[talonPort], LOW); //Return to default external connecton
+
+		output = output + "},"; //CLOSE JSON BLOB
+		// return output + ",\"Pos\":[" + String(port) + "]}}";
+		// return output;
+
+	}
+
+	if(diagnosticLevel <= 5) {
+		output = output + "\"lvl-5\":{"; //OPEN JSON BLOB
+		// digitalWrite(KestrelPins::PortBPins[talonPort], HIGH); //Connect to internal I2C
+		// disableDataAll(); //Turn off all data 
+		// digitalWrite(KestrelPins::PortBPins[talonPort], HIGH); //Connect to internal I2C
+		// for(int i = 0; i < numPorts; i++) {
+		// 	// overflow[i] = ioBeta.getInterrupt(pinsBeta::OVF1 + i); //Read in overflow values
+		// 	faults[i] = ioAlpha.getInterrupt(pinsAlpha::FAULT1 + i); //Read in fault values
+		// 	if (faults[i] == true) {
+		// 		throwError(SENSOR_POWER_FAIL | portErrorCode | i); //Throw power fault error with given port appended 
+		// 	}
+		// }
+
+		// output = output + "\"ALPHA\":" + String(ioAlpha.readBus()) + ","; //Append ALPHA port readout
+		// // output = output + "\"BETA\":" + String(ioBeta.readBus()) + ","; //Append BETA port readout
+		// output = output + "\"ALPHA_INT\":" + String(ioAlpha.getAllInterrupts(PCAL9535A::IntAge::BOTH)) + ","; //Append ALPHA interrupt readout
+		// uint8_t senseBus = 0; //Manually concatonate pin reads from ioSense expander
+		// for(int i = 0; i < 4; i++) { //NOT associated with numPorts, which is why variable is not used
+		// 	senseBus = senseBus | (ioSense.read(i) << i); //DEBUG!
+		// 	// senseBus = 0; //DEBUG!
+		// }
+		// output = output + "\"MUX\":" + String(senseBus) + ","; //Append MUX controller readout
+
+		// output = output + "\"I2C_OB\":[";
+		// digitalWrite(KestrelPins::PortBPins[talonPort], HIGH); //Connect to internal I2C
+		// // digitalWrite(D6, HIGH); //Connect to internal I2C
+		// ioAlpha.digitalWrite(pinsAlpha::LOOPBACK_EN, LOW); //Make sure loopback is turned off
+		// for(int adr = 0; adr < 128; adr++) { //Check for addresses present 
+		// 	Wire.beginTransmission(adr);
+		// 	// Wire.write(0x00);
+		// 	if(Wire.endTransmission() == 0) {
+		// 		output = output + String(adr) + ",";
+		// 	}
+		// 	delay(1); //DEBUG!
+		// }
+		// if(output.substring(output.length() - 1).equals(",")) {
+		// 	output = output.substring(0, output.length() - 1); //Trim trailing ',' is present
+		// }
+		// output = output + "],"; // close array
+
+		// disableDataAll(); //Make sure all data ports are turned off to begin with
+		// for(int port = 1; port <= numPorts; port++) { //CHECK EACH SENSOR PORT FOR ADDRESSES
+		// 	output = output + "\"I2C_" + String(port) + "\":["; //Append identifer for
+		// 	Serial.print("Enable States: "); //DEBUG! And following prints
+		// 	// Serial.print(enablePower(port, true)); //Turn on power to given port //DEBUG! REPLACE!
+		// 	Serial.println(enableData(port, true)); //Turn on data to given port
+		// 	// delay(10);
+		// 	// digitalWrite(KestrelPins::PortBPins[talonPort], LOW); //Connect to external I2C
+		// 	for(int adr = 0; adr < 128; adr++) { //Check for addresses present 
+		// 		Wire.beginTransmission(adr);
+		// 		// Wire.write(0x00);
+		// 		int error = Wire.endTransmission();
+		// 		if(adr == 0) { //DEBUG!
+		// 			Serial.print("Zero Error: ");
+		// 			Serial.println(error); 
+		// 		}
+		// 		if(error == 0) {
+		// 			output = output + String(adr) + ",";
+		// 		}
+		// 		delay(1); //DEBUG!
+		// 	}
+		// 	enableData(port, false); //Turn off data to given port
+		// 	if(output.substring(output.length() - 1).equals(",")) {
+		// 		output = output.substring(0, output.length() - 1); //Trim trailing ',' if present
+		// 	}
+		// 	output = output + "]"; //Close array
+		// 	if(port < numPorts) output = output + ","; //Only add comma if not the last entry in array 
+		// }
+		output = output + "}"; //Close pair
+		
+		
+		// // output = output + "}"; //CLOSE JSON BLOB, 
+		// ioAlpha.clearInterrupt(PCAL9535A::IntAge::BOTH); //Clear all interrupts on Alpha
+		// // ioBeta.clearInterrupt(PCAL9535A::IntAge::BOTH); //Clear all interrupts on Beta
+		// // return output + ",\"Pos\":[" + String(port) + "]}}";
+		// // return output;
+	}
+    enableI2C_Global(globState); //Return to previous state
+    enableI2C_OB(obState);
+	return output + ",\"Pos\":[" + getTalonPort() + "]}}"; //Write position in logical form - Return compleated closed output
+	// else return ""; //Return empty string if reaches this point 
+
+	// return "{}"; //Return null if reach end	
+	// return output + ",\"Pos\":[" + String(port) + "]}}"; //Append position and return
+	// return "{}"; //DEBUG!
 }
 
 bool Kestrel::enablePower(uint8_t port, bool state) 
@@ -652,11 +934,11 @@ bool Kestrel::testForBat()
     ioOB.pinMode(PinsOB::CSA_EN, OUTPUT);
     ioOB.digitalWrite(PinsOB::CE, HIGH); //Disable charging
     ioOB.digitalWrite(PinsOB::CSA_EN, HIGH); //Enable voltage sense
-    csaAlpha.EnableChannel(CH1, true);
-    csaAlpha.Update(); //Force new readings 
+    csaAlpha.enableChannel(CH1, true);
+    csaAlpha.update(); //Force new readings 
     delay(5000); //Wait for cap to discharge 
     // csaAlpha.SetCurrentDirection(CH1, BIDIRECTIONAL);
-    float vBat = csaAlpha.GetBusVoltage(CH1);
+    float vBat = csaAlpha.getBusVoltage(CH1);
     ioOB.digitalWrite(PinsOB::CE, LOW); //Turn charging back on
     bool result = false;
     if(vBat < 2.0) { //If less than 2V (min bat voltage) give error 
@@ -696,11 +978,11 @@ bool Kestrel::configTalonSense()
     Serial.println("CONFIG TALON SENSE"); //DEBUG!
     bool currentGlob = enableI2C_Global(false);
 	bool currentOB = enableI2C_OB(true);
-    csaBeta.SetCurrentDirection(CH4, UNIDIRECTIONAL); //Bulk voltage, unidirectional
-	csaBeta.EnableChannel(CH1, false); //Disable all channels but 4
-	csaBeta.EnableChannel(CH2, false);
-	csaBeta.EnableChannel(CH3, false);
-	csaBeta.EnableChannel(CH4, true);
+    csaBeta.setCurrentDirection(CH4, UNIDIRECTIONAL); //Bulk voltage, unidirectional
+	csaBeta.enableChannel(CH1, false); //Disable all channels but 4
+	csaBeta.enableChannel(CH2, false);
+	csaBeta.enableChannel(CH3, false);
+	csaBeta.enableChannel(CH4, true);
     enableI2C_Global(currentGlob); //Reset to previous state
     enableI2C_OB(currentOB); 
     // enableI2C_Global(true); //Connect all together 
