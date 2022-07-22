@@ -22,6 +22,8 @@ Kestrel::Kestrel() : ioOB(0x20), ioTalon(0x21), led(0x52), csaAlpha(2, 2, 2, 2, 
 {
 	// port = talonPort; //Copy to local
 	// version = hardwareVersion; //Copy to local
+    // talonPort = 0x0F; //Set dummy Talon port for reporting
+    sensorInterface = BusType::CORE;
 }
 
 String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
