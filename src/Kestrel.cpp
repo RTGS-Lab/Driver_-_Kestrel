@@ -861,7 +861,10 @@ bool Kestrel::waitUntilTimerDone()
     Serial.print("Time Now: "); //DEBUG!
     Serial.println(millis());
     pinMode(Pins::Clock_INT, INPUT);
-    while(digitalRead(Pins::Clock_INT) == HIGH && ((millis() - timerStart) < (logPeriod*1000 + 500))){delay(1);} //Wait until either timer has expired or clock interrupt has gone off //DEBUG! Give 500 ms cushion for testing RTC
+    while(digitalRead(Pins::Clock_INT) == HIGH && ((millis() - timerStart) < (logPeriod*1000 + 500))){ //Wait until either timer has expired or clock interrupt has gone off //DEBUG! Give 500 ms cushion for testing RTC
+        delay(1); 
+        Particle.process(); //Run process continually while waiting in order to make sure device is responsive 
+    } 
     if(digitalRead(Pins::Clock_INT) == LOW) return true; //If RTC triggers properly, return true, else return false 
     else return false; 
 }
