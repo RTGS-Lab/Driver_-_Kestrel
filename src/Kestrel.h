@@ -221,7 +221,7 @@ class Kestrel: public Sensor
 		static void timechange_handler(system_event_t event, int param);
 		bool timeSyncRequested = false; ///<Used to indicate to the system that a time sync was requested from Particle and not to override
 		time_t timegm(struct tm *tm); //Portable implementation
-		time_t maxTimeError = 5; //Max time error allowed between clock sources [seconds]
+		time_t maxTimeError = 30; //Max time error allowed between clock sources [seconds]
 		bool timeGood = false; ///<Keep track of the legitimacy of the time based on the last sync attempt
 		uint8_t timeSource = 0; ///<Keep track of where the time is coming from
 		time_t timeSyncVals[3] = {0}; ///<Keep track of what the values of each device where the last time syncTime was called

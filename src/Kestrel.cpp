@@ -459,7 +459,7 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 	}
     enableI2C_Global(globState); //Return to previous state
     enableI2C_OB(obState);
-	return output + ",\"Pos\":[" + getTalonPort() + "]}}"; //Write position in logical form - Return compleated closed output
+	return output + ",\"Pos\":[15]}}"; //Write position in logical form - Return compleated closed output
 	// else return ""; //Return empty string if reaches this point 
 
 	// return "{}"; //Return null if reach end	
@@ -693,12 +693,20 @@ uint8_t Kestrel::syncTime()
         timeSyncRequested = true;
         Particle.syncTime();
         waitFor(Particle.syncTimeDone, 5000); //Wait until sync is done, at most 5 seconds //FIX!
-        Time.zone(0); //Set to UTC 
-        particleTime = Time.now();
+        if(Particle.syncTimeDone()) { //Make sure sync time was actually completed 
+            Time.zone(0); //Set to UTC 
+            particleTime = Time.now();
+            // timeSyncRequested = false; //Release control of time sync override 
+            Serial.print("Cell Time: "); 
+            Serial.println(particleTime);
+            timeSyncVals[0] = Time.now(); //Grab last time
+        }
+        else {
+            timeSyncVals[0] = 0;
+            //THROW ERROR
+        }
         timeSyncRequested = false; //Release control of time sync override 
-        Serial.print("Cell Time: "); 
-        Serial.println(particleTime);
-        timeSyncVals[0] = Time.now(); //Grab last time
+        
     }
     else timeSyncVals[0] = 0; //Clear if not updated
 
@@ -739,7 +747,8 @@ uint8_t Kestrel::syncTime()
 
     else if(abs(particleTime - gpsTime) < maxTimeError && gpsTime != 0 && particleTime != 0) { //If both updated variables match 
         Serial.println("CLOCK SOURCE: GPS and Cell match");
-        rtc.setTime(Time.year(), Time.month(), Time.day(), Time.hour(), Time.minute(), Time.second()); //Set RTC from Cell
+        time_t currentTime = Time.now(); //Ensure sync and that local offset is not applied 
+        rtc.setTime(Time.year(currentTime), Time.month(currentTime), Time.day(currentTime), Time.hour(currentTime), Time.minute(currentTime), Time.second(currentTime)); //Set RTC from Cell
         timeGood = true;
         //Throw error
         source = TimeSource::CELLULAR;
@@ -778,6 +787,7 @@ uint8_t Kestrel::syncTime()
     }
     if(source != TimeSource::NONE && source != TimeSource::RTC) lastTimeSync = getTime(); //If time has been sourced, update the last sync time
     else lastTimeSync = 0; //Otherwise, set back to unknown time
+    timeSource = source; //Grab the time source used 
     // return false; //DEBUG!
     enableAuxPower(currentAux); //Return all to previous states
     enableI2C_Global(currentGlob);
@@ -1064,7 +1074,7 @@ void Kestrel::timechange_handler(system_event_t event, int param)
     if(event == time_changed) { //Confirm event type before proceeding 
         if(param == time_changed_sync && !(selfPointer->timeSyncRequested)) { 
             Serial.println("TIME CHANGE: Auto"); //DEBUG!
-            selfPointer->syncTime(); //if time update not from manual sync (and sync not requested), call time sync
+            selfPointer->syncTime(); //if time update not from manual sync (and sync not requested), call time sync to return to desired val
         }
         if(param == time_changed_sync && selfPointer->timeSyncRequested) Serial.println("TIME CHANGE: Requested"); //DEBUG!
         if(param == time_changed_manually) Serial.println("TIME CHANGE: Manual"); //DEBUG!
