@@ -687,7 +687,8 @@ uint8_t Kestrel::syncTime()
     time_t particleTime = 0;
     time_t rtcTime = 0;
     
-
+    Serial.print("Timebase Start: "); //DEBUG!
+    Serial.println(millis());
     /////////// CELL TIME //////////////////
     if(Particle.connected()) {
         timeSyncRequested = true;
@@ -714,14 +715,46 @@ uint8_t Kestrel::syncTime()
     bool currentAux = enableAuxPower(true);
     bool currentGlob = enableI2C_Global(false);
     bool currentOB = enableI2C_OB(true);
-    if(gps.getDateValid() && gps.getTimeValid()) {
+    // if(gps.begin() == false) throwError(GPS_INIT_FAIL);
+    // else {
+        gps.setI2COutput(COM_TYPE_UBX); //Set the I2C port to output UBX only (turn off NMEA noise)
+        uint8_t customPayload[MAX_PAYLOAD_SIZE]; // This array holds the payload data bytes. MAX_PAYLOAD_SIZE defaults to 256. The CFG_RATE payload is only 6 bytes!
+        gps.setPacketCfgPayloadSize(MAX_PAYLOAD_SIZE);
+        ubxPacket customCfg = {0, 0, 0, 0, 0, customPayload, 0, 0, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED};
+        customCfg.cls = UBX_CLASS_NAV; // This is the message Class
+        // customCfg.id = UBX_NAV_TIMELS; // This is the message ID
+        customCfg.id = UBX_NAV_TIMEUTC; // This is the message ID
+        customCfg.len = 0; // Setting the len (length) to zero let's us poll the current settings
+        customCfg.startingSpot = 0; // Always set the startingSpot to zero (unless you really know what you are doing)
+        uint16_t maxWait = 1500; // Wait for up to 250ms (Serial may need a lot longer e.g. 1100)
+        if (gps.sendCommand(&customCfg, maxWait) != SFE_UBLOX_STATUS_DATA_RECEIVED) {
+            Serial.println("GPS READ FAIL"); //DEBUG!
+            throwError(GPS_READ_FAIL); // We are expecting data and an ACK, throw error otherwise
+        }
+        // Serial.print("GPS UTC Seconds: "); //DEBUG!
+        // Serial.println(customPayload[18]);
+        Serial.print("GPS UTC Validity: "); //DEBUG!
+        Serial.println(customPayload[19], HEX);
+
+        // Serial.print("GPS Leap Seconds: "); //DEBUG!
+        // Serial.println(customPayload[9]);
+        
+        // Serial.print("GPS Time: "); //DEBUG!
+        // Serial.print(gps.getHour());
+        // Serial.print(":");
+        // Serial.print(gps.getMinute());
+        // Serial.print(":");
+        // Serial.println(gps.getSecond());
+    // }
+    // if(gps.getDateValid() && gps.getTimeValid() && gps.getTimeFullyResolved()) {
+    if((customPayload[19] & 0x0F) == 0x07) { //Check if all times are valid
         struct tm timeinfo = {0}; //Create struct in C++ time land
-        timeinfo.tm_year = gps.getYear() - 1900; //Years since 1900
-        timeinfo.tm_mon = gps.getMonth() - 1; //Months since january
-        timeinfo.tm_mday = gps.getDay();
-        timeinfo.tm_hour = gps.getHour();
-        timeinfo.tm_min = gps.getMinute();
-        timeinfo.tm_sec = gps.getSecond();
+        timeinfo.tm_year = (customPayload[12] | (customPayload[13] << 8)) - 1900; //Years since 1900
+        timeinfo.tm_mon = customPayload[14] - 1; //Months since january
+        timeinfo.tm_mday = customPayload[15];
+        timeinfo.tm_hour = customPayload[16];
+        timeinfo.tm_min = customPayload[17];
+        timeinfo.tm_sec = customPayload[18];
         gpsTime = timegm(&timeinfo); //Convert struct to unix time
         Serial.print("GPS Time: ");
         Serial.println(gpsTime); //DEBUG!
@@ -745,10 +778,21 @@ uint8_t Kestrel::syncTime()
         source = TimeSource::CELLULAR; //Report cell as the most comprehensive source
     }
 
-    else if(abs(particleTime - gpsTime) < maxTimeError && gpsTime != 0 && particleTime != 0) { //If both updated variables match 
+    if(abs(particleTime - gpsTime) < maxTimeError && gpsTime != 0 && particleTime != 0) { //If both updated variables match //FIX! This should be just an if, not an if else, so the RTC is updated 
         Serial.println("CLOCK SOURCE: GPS and Cell match");
-        time_t currentTime = Time.now(); //Ensure sync and that local offset is not applied 
-        rtc.setTime(Time.year(currentTime), Time.month(currentTime), Time.day(currentTime), Time.hour(currentTime), Time.minute(currentTime), Time.second(currentTime)); //Set RTC from Cell
+        // time_t currentTime = Time.now(); //Ensure sync and that local offset is not applied 
+        // rtc.setTime(Time.year(currentTime), Time.month(currentTime), Time.day(currentTime), Time.hour(currentTime), Time.minute(currentTime), Time.second(currentTime)); //Set RTC from Cell
+        if(particleTime != 0) { //DEBUG! RESTORE!
+            time_t currentTime = particleTime; //Grab time from cell, even though it is old, to ensure correct time is being set //FIX!
+            Serial.print("RTC Set Time: "); //DEBUG!
+            Serial.print(Time.hour(currentTime));
+            Serial.print(":");
+            Serial.print(Time.minute(currentTime));
+            Serial.print(":");
+            Serial.println(Time.second(currentTime));
+            rtc.setTime(Time.year(currentTime), Time.month(currentTime), Time.day(currentTime), Time.hour(currentTime), Time.minute(currentTime), Time.second(currentTime)); //Set RTC from Cell
+        }
+        
         timeGood = true;
         //Throw error
         source = TimeSource::CELLULAR;
@@ -792,6 +836,8 @@ uint8_t Kestrel::syncTime()
     enableAuxPower(currentAux); //Return all to previous states
     enableI2C_Global(currentGlob);
     enableI2C_OB(currentOB);
+    Serial.print("Timebase End: "); //DEBUG!
+    Serial.println(millis());
     return source;
 }
 
