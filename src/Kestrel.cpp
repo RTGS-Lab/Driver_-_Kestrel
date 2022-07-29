@@ -369,10 +369,22 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 		}
         output = output + "\"ALS\":";
         if(als.begin() == 0) {
-            output = output + String(als.GetLux()); //appenbd ALS results 
+            output = output + String(als.GetLux()) + ","; //appenbd ALS results 
         }
         else {
-            output = output + "null";
+            output = output + "null,";
+            //THROW ERROR
+        }
+
+        
+        if(atmos.begin()) {
+            atmos.setPrecision(SHT4X_MED_PRECISION); //Set to mid performance 
+            sensors_event_t humidity, temp;
+            atmos.getEvent(&humidity, &temp);
+            output = output + "\"Temperature\":" + String(temp.temperature, 4) + ",\"RH\":" + String(humidity.relative_humidity, 4); //Concatonate atmos data 
+        }
+        else {
+            output = output + "\"Temperature\":null,\"RH\":null"; //append null string
             //THROW ERROR
         }
 		// ioSense.digitalWrite(pinsSense::MUX_EN, HIGH); //Turn MUX back off 
