@@ -361,12 +361,20 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
                 output = output + "null,null,null,null"; //Append nulls if can't connect to csa beta
                 throwError(CSA_INIT_FAIL | 0xB00); //Throw error for ADC failure
             }
-			output = output + "]"; //Close group
+			output = output + "],"; //Close group
 		}
 		else { //If unable to initialzie ADC
-			output = output + "\"PORT_V\":[null],\"PORT_I\":[null]";
+			output = output + "\"PORT_V\":[null],\"PORT_I\":[null],";
 			throwError(CSA_INIT_FAIL); //Throw error for global CSA failure
 		}
+        output = output + "\"ALS\":";
+        if(als.begin() == 0) {
+            output = output + String(als.GetLux()); //appenbd ALS results 
+        }
+        else {
+            output = output + "null";
+            //THROW ERROR
+        }
 		// ioSense.digitalWrite(pinsSense::MUX_EN, HIGH); //Turn MUX back off 
 		// digitalWrite(KestrelPins::PortBPins[talonPort], LOW); //Return to default external connecton
 
