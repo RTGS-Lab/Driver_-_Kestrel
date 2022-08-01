@@ -53,6 +53,7 @@ Distributed as-is; no warranty is given.
 #include "PAC1932_Library/src/PAC1934.h"
 #include "VEML3328/src/VEML3328.h"
 #include <Adafruit_SHT4x.h>
+#include <MXC6655.h>
 // #include <GlobalPins.h>
 
 
@@ -207,6 +208,7 @@ class Kestrel: public Sensor
 		PAC1934 csaBeta;
 		VEML3328 als;
 		Adafruit_SHT4x atmos;
+		MXC6655 accel; 
 
 		
 		PCA9634 led;

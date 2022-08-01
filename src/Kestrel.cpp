@@ -381,12 +381,18 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
             atmos.setPrecision(SHT4X_MED_PRECISION); //Set to mid performance 
             sensors_event_t humidity, temp;
             atmos.getEvent(&humidity, &temp);
-            output = output + "\"Temperature\":" + String(temp.temperature, 4) + ",\"RH\":" + String(humidity.relative_humidity, 4); //Concatonate atmos data 
+            output = output + "\"Temperature\":" + String(temp.temperature, 4) + ",\"RH\":" + String(humidity.relative_humidity, 4) + ","; //Concatonate atmos data 
         }
         else {
-            output = output + "\"Temperature\":null,\"RH\":null"; //append null string
+            output = output + "\"Temperature\":null,\"RH\":null,"; //append null string
             //THROW ERROR
         }
+
+        if(accel.begin() == 0) {
+            accel.updateAccelAll();
+            output = output + "\"ACCEL\":[" + String(accel.data[0]) + "," + String(accel.data[1]) + "," + String(accel.data[2]) + "]"; 
+        }
+        else output = output + "\"ACCEL\":[null]";
 		// ioSense.digitalWrite(pinsSense::MUX_EN, HIGH); //Turn MUX back off 
 		// digitalWrite(KestrelPins::PortBPins[talonPort], LOW); //Return to default external connecton
 
