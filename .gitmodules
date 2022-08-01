@@ -13,12 +13,6 @@
 [submodule "src/PAC1932_Library"]
 	path = src/PAC1932_Library
 	url = https://github.com/bschulz1701/PAC1932_Library.git
-[submodule "src/MXC6655"]
-	path = src/MXC6655
-	url = https://github.com/gemsiot/MXC6655.git
-[submodule "src/MMC5633"]
-	path = src/MMC5633
-	url = https://github.com/gemsiot/MMC5633.git
 [submodule "src/VEML3328"]
 	path = src/VEML3328
 	url = https://github.com/gemsiot/VEML3328.git
