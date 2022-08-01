@@ -44,6 +44,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     enableAuxPower(true); //Turn on aux power 
     csaAlpha.begin();
     csaBeta.begin();
+    csaAlpha.setFrequency(Frequency::SPS_64); //Set to ensure at least 24 hours between accumulator rollover 
     // delay(100); //DEBUG! For GPS
     ioOB.pinMode(PinsOB::LED_EN, OUTPUT);
 	ioOB.digitalWrite(PinsOB::LED_EN, LOW); //Turn on LED indicators 
@@ -276,6 +277,7 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 		// ioAlpha.digitalWrite(pinsAlpha::SENSE_EN, HIGH); //Make sure 3v3 Sense is turned on
 		// ioSense.digitalWrite(pinsSense::MUX_EN, LOW); //Turn MUX on 
 		// int SenseError = adcSense.Begin(); //Initialize ADC 
+        static time_t lastAccReset = 0; //Grab time that accumulators were reset. Set to 0 on restart
         ioOB.digitalWrite(PinsOB::CSA_EN, HIGH); //Enable CSA GPIO control
         bool initA = csaAlpha.begin();
         bool initB = csaBeta.begin();
@@ -362,9 +364,31 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
                 throwError(CSA_INIT_FAIL | 0xB00); //Throw error for ADC failure
             }
 			output = output + "],"; //Close group
+            output = output + "\"AVG_P\":["; //Open group
+            if(lastAccReset == 0) { //If unknown time since last reset, clear accumulators on csa Alpha
+                csaAlpha.update(true); 
+                lastAccReset = getTime(); //Update time of reset
+            }
+            if(initA == true) {
+                for(int i = 0; i < 4; i++){ //Increment through all ports
+                    output = output + String(csaAlpha.getPowerAvg(Channel::CH1 + i)); //Get bus voltage with averaging 
+                    if(i < 3) output = output + ","; //Append comma if not the last reading
+                }
+            }
+            else {
+                output = output + "null,null,null,null"; //Append nulls if can't connect to csa alpha
+                throwError(CSA_INIT_FAIL | 0xA00); //Throw error for ADC failure
+            }
+            output = output + "],"; //Close group
+            output = output + "\"LAST_CLR\":" + String((int)lastAccReset) + ","; //Append the time of the last accumulator clear
+            if((lastAccReset - getTime()) > 86400 && (getTime() % 86400) < 3600) { //If it is zero hour in UTC and it has been more than 24 hours since the last reset, clear accumulators 
+                csaAlpha.update(true); 
+                lastAccReset = getTime(); //Update time of reset
+            }
+			
 		}
 		else { //If unable to initialzie ADC
-			output = output + "\"PORT_V\":[null],\"PORT_I\":[null],";
+			output = output + "\"PORT_V\":[null],\"PORT_I\":[null],\"AVG_P\":[null]";
 			throwError(CSA_INIT_FAIL); //Throw error for global CSA failure
 		}
         output = output + "\"ALS\":";
