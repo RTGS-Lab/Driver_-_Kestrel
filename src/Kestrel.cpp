@@ -400,27 +400,34 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
             //THROW ERROR
         }
 
-        
+        String temperatureString = "\"Temperature\":["; //Used to gather temp from multiple sources
         if(atmos.begin()) {
             atmos.setPrecision(SHT4X_MED_PRECISION); //Set to mid performance 
             sensors_event_t humidity, temp;
             atmos.getEvent(&humidity, &temp);
-            output = output + "\"Temperature\":" + String(temp.temperature, 4) + ",\"RH\":" + String(humidity.relative_humidity, 4) + ","; //Concatonate atmos data 
+            output = output + "\"RH\":" + String(humidity.relative_humidity, 4) + ","; //Concatonate atmos data 
+            temperatureString = temperatureString + String(temp.temperature, 4) + ",";
         }
         else {
-            output = output + "\"Temperature\":null,\"RH\":null,"; //append null string
+            output = output + "\"RH\":null,"; //append null string
+            temperatureString = temperatureString + "null,";
             //THROW ERROR
         }
 
+
         if(accel.begin() == 0) {
             accel.updateAccelAll();
-            output = output + "\"ACCEL\":[" + String(accel.data[0]) + "," + String(accel.data[1]) + "," + String(accel.data[2]) + "]"; 
+            output = output + "\"ACCEL\":[" + String(accel.data[0]) + "," + String(accel.data[1]) + "," + String(accel.data[2]) + "],"; 
+            temperatureString = temperatureString + String(accel.getTemp(), 4);
         }
-        else output = output + "\"ACCEL\":[null]";
+        else {
+            output = output + "\"ACCEL\":[null]";
+            temperatureString = temperatureString + "null";
+        }
 		// ioSense.digitalWrite(pinsSense::MUX_EN, HIGH); //Turn MUX back off 
 		// digitalWrite(KestrelPins::PortBPins[talonPort], LOW); //Return to default external connecton
-
-		output = output + "},"; //CLOSE JSON BLOB
+        temperatureString = temperatureString + "]";
+		output = output + temperatureString + "},"; //CLOSE JSON BLOB
 		// return output + ",\"Pos\":[" + String(port) + "]}}";
 		// return output;
 
