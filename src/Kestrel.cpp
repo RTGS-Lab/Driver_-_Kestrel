@@ -36,7 +36,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
 	#elif defined(PARTICLE)
 		if(!Wire.isEnabled()) Wire.begin(); //Only initialize I2C if not done already //INCLUDE FOR USE WITH PARTICLE 
 	#endif
-
+    if(!initDone) throwError(SYSTEM_RESET | ((System.resetReason() << 8) & 0xFF00)); //Throw reset error with reason for reset as subtype. Truncate resetReason to one byte. This will include all predefined reasons, but will prevent issues if user returns some large (technically can be up to 32 bits) custom reset reason
     bool globState = enableI2C_Global(false); //Turn off external I2C
     bool obState = enableI2C_OB(true); //Turn on internal I2C
     if(ioOB.begin() != 0) criticalFault = true;
@@ -210,6 +210,15 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 		//TBD
 		// Serial.println(millis()); //DEBUG!
 		output = output + "\"lvl-3\":{"; //OPEN JSON BLOB
+        Wire.beginTransmission(0x6F);
+        uint8_t rtcError = Wire.endTransmission();
+        if(rtcError == 0) {
+            time_t currentTime = rtc.getTimeUnix();
+            delay(1200); //Wait at least 1 second (+20%)
+            if((rtc.getTimeUnix() - currentTime) == 0) throwError(RTC_OSC_FAIL); //If rtc is not incrementing, throw error 
+        }
+        else throwError(RTC_READ_FAIL | rtcError << 8); //Throw error since unable to communicate with RTC
+        
 		// /////// TEST I2C WITH LOOPBACK ////////////
 		// output = output + "\"I2C_PORT_FAIL\":["; 
 		// disableDataAll(); //Turn off all data 
@@ -381,7 +390,7 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
             }
             output = output + "],"; //Close group
             output = output + "\"LAST_CLR\":" + String((int)lastAccReset) + ","; //Append the time of the last accumulator clear
-            if((lastAccReset - getTime()) > 86400 && (getTime() % 86400) < 3600) { //If it is zero hour in UTC and it has been more than 24 hours since the last reset, clear accumulators 
+            if((getTime() - lastAccReset) > 86400 && (getTime() % 86400) < 3600) { //If it is zero hour in UTC and it has been more than 24 hours since the last reset, clear accumulators 
                 csaAlpha.update(true); 
                 lastAccReset = getTime(); //Update time of reset
             }
@@ -779,12 +788,15 @@ uint8_t Kestrel::syncTime()
         }
         else {
             timeSyncVals[0] = 0;
-            //THROW ERROR
+            throwError(CLOCK_UNAVAILABLE | 0x300); //OR with Cell indicator 
         }
         timeSyncRequested = false; //Release control of time sync override 
         
     }
-    else timeSyncVals[0] = 0; //Clear if not updated
+    else {
+        timeSyncVals[0] = 0; //Clear if not updated
+        throwError(CLOCK_UNAVAILABLE | 0x300); //OR with Cell indicator 
+    }
 
     ////////// GPS TIME ///////////////////
     bool currentAux = enableAuxPower(true);
@@ -835,17 +847,28 @@ uint8_t Kestrel::syncTime()
         Serial.println(gpsTime); //DEBUG!
         timeSyncVals[1] = gpsTime; //Grab last time
     }
-    else timeSyncVals[1] = 0; //Clear if not updated
+    else {
+        timeSyncVals[1] = 0; //Clear if not updated
+        throwError(CLOCK_UNAVAILABLE | 0x200); //OR with GPS indicator 
+    }
 
 	
-
     /////////// RTC TIME //////////////
-    rtcTime = rtc.getTimeUnix();
-    Serial.print("RTC Time: ");
-    Serial.println(rtcTime); //DEBUG!
-    Serial.print("Particle Time: ");
-    Serial.println(particleTime);  
-    timeSyncVals[2] = rtcTime; //Grab last time
+    Wire.beginTransmission(0x6F); //Check for presence of RTC //FIX! Find a better way to test if RTC time is available 
+    uint8_t rtcError = Wire.endTransmission();
+    if(rtcError != 0) {
+        timeSyncVals[2] = 0; //Clear if unable to connect to RTC
+        throwError(CLOCK_UNAVAILABLE | 0x100); //OR with RTC indicator 
+    }
+    else { //Only read values in if able to connect to RTC
+        rtcTime = rtc.getTimeUnix();
+        Serial.print("RTC Time: ");
+        Serial.println(rtcTime); //DEBUG!
+        Serial.print("Particle Time: ");
+        Serial.println(particleTime);  
+        timeSyncVals[2] = rtcTime; //Grab last time
+    }
+    
     uint8_t source = TimeSource::NONE; //Default to none unless otherwise set
     if(abs(rtcTime - gpsTime) < maxTimeError && abs(rtcTime - particleTime) < maxTimeError && rtcTime != 0 && gpsTime != 0 && particleTime != 0) { //If both updated sources match local time
         Serial.println("CLOCK SOURCE: All match");
@@ -869,8 +892,8 @@ uint8_t Kestrel::syncTime()
         }
         
         timeGood = true;
-        //Throw error
         source = TimeSource::CELLULAR;
+        if(!(abs(rtcTime - gpsTime) < maxTimeError && abs(rtcTime - particleTime) < maxTimeError && rtcTime != 0 && gpsTime != 0 && particleTime != 0) && timeSyncVals[2] != 0) throwError(CLOCK_MISMATCH | 0x100); //Check if RTC is within range of others, if not throw error (only if not caused by unavailability)
     }
     else if(abs(particleTime - rtcTime) < maxTimeError && rtcTime != 0 && particleTime != 0) { //If cell and rtc agree
         Serial.println("CLOCK SOURCE: Cell and local match");
@@ -878,6 +901,7 @@ uint8_t Kestrel::syncTime()
         //Throw error
         timeGood = true;
         source = TimeSource::CELLULAR;
+        if(timeSyncVals[1] != 0) throwError(CLOCK_MISMATCH | 0x200); //Throw clock mismatch error, OR with GPS indicator (only if not caused by clock unavailabilty) 
     }
     else if(abs(gpsTime - rtcTime) < maxTimeError && gpsTime != 0 && rtcTime != 0) { //If gps and rtc agree
         Serial.println("CLOCK SOURCE: GPS and local match");
@@ -885,6 +909,7 @@ uint8_t Kestrel::syncTime()
         //Throw error
         timeGood = true;
         source = TimeSource::GPS;
+        if(timeSyncVals[0] != 0) throwError(CLOCK_MISMATCH | 0x300); //Throw clock mismatch error, OR with Cell indicator (only if not caused by clock unavailabilty) 
     }
     else { //No two sources agree, very bad!
         
@@ -893,6 +918,9 @@ uint8_t Kestrel::syncTime()
             Time.setTime(rtc.getTimeUnix()); //Set time from RTC   
             timeGood = true;
             source = TimeSource::RTC;
+            //Throw mismatch errors as needed //FIX!??
+            // if(timeSyncVals[0] != 0) throwError(CLOCK_MISMATCH | 0x300); //Throw clock mismatch error, OR with Cell indicator (only if not caused by clock unavailabilty) 
+            // if(timeSyncVals[1] != 0) throwError(CLOCK_MISMATCH | 0x200); //Throw clock mismatch error, OR with GPS indicator (only if not caused by clock unavailabilty) 
         }
         else {
             Serial.println("CLOCK SOURCE: NONE"); //DEBUG!
@@ -900,8 +928,9 @@ uint8_t Kestrel::syncTime()
             timeGood = false; 
             Time.setTime(946684800); //Set time back to year 2000
             source = TimeSource::NONE;
-            //Throw error!
         }
+        throwError(CLOCK_NO_SYNC); //Throw error regardless of which state, because no two sources are able to agree we have a sync failure 
+
         
     }
     if(source != TimeSource::NONE && source != TimeSource::RTC) lastTimeSync = getTime(); //If time has been sourced, update the last sync time

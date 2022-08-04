@@ -152,6 +152,18 @@ class Kestrel: public Sensor
 	const uint32_t CSA_INIT_FAIL = 0x100500F0; ///<Failure to initialize CSA Alpha or CSA Beta
 	const uint32_t GPS_INIT_FAIL = 0x100A00F8; ///<Failure to initialize the onboard GPS
 	const uint32_t GPS_READ_FAIL = 0x100B00F8; ///<Failure to read from the onboard GPS
+	const uint32_t CELL_FAIL = 0xF00700F6; ///<Failure to connect to cell network
+    const uint32_t CLOUD_FAIL = 0xF00800F6; ///<Failure to connect to particle cloud
+	const uint32_t SYSTEM_RESET = 0xF00A0000; ///<Reported on first init, along with reason for reset
+	const uint32_t CLOCK_MISMATCH = 0x700100F5; ///<Mismatch between consensus time and one of the sources (subtype indicates which source)
+	const uint32_t CLOCK_NO_SYNC = 0x500103F0; ///<No two clock sources agree, unable to provide synced time
+	const uint32_t CLOCK_UNAVAILABLE = 0x500400F5; ///<One of the system clocks is unavailable to read from (subtype indicates which source)
+	const uint32_t RTC_OSC_FAIL = 0x500500F5; ///<Failure of local RTC to increment 
+	const uint32_t RTC_POWER_LOSS = 0x54B200F5; ///<Local RTC has encountered power failure 
+	const uint32_t RTC_READ_FAIL = 0x100C00F5; ///<Failure to read the onboard RTC
+	
+	const time_t CELL_TIMEOUT = 300000; ///<Amount of time [ms] to wait while trying to connect to cell
+	
 
     public:
         Kestrel();
@@ -167,6 +179,7 @@ class Kestrel: public Sensor
         bool enableI2C_Global(bool state = true);
 		bool enableI2C_External(bool state = true);
 		bool enableSD(bool state = true);
+		bool sdInserted();
 		bool enableAuxPower(bool state);
 		time_t getTime();
 		uint8_t syncTime();
@@ -181,6 +194,7 @@ class Kestrel: public Sensor
 		uint8_t totalErrors() {
 			return numErrors + rtc.numErrors; 
 		}
+		bool connectToCell();
 
         static constexpr uint8_t numTalonPorts = 5; 
 		static constexpr int MAX_MESSAGE_LENGTH = 1024; ///<Maximum number of characters allowed for single transmission 
