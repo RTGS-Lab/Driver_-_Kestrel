@@ -788,14 +788,14 @@ uint8_t Kestrel::syncTime()
         }
         else {
             timeSyncVals[0] = 0;
-            throwError(CLOCK_UNAVAILABLE | 0x300); //OR with Cell indicator 
+            throwError(CLOCK_UNAVAILABLE | 0x06); //OR with Cell indicator 
         }
         timeSyncRequested = false; //Release control of time sync override 
         
     }
     else {
         timeSyncVals[0] = 0; //Clear if not updated
-        throwError(CLOCK_UNAVAILABLE | 0x300); //OR with Cell indicator 
+        throwError(CLOCK_UNAVAILABLE | 0x06); //OR with Cell indicator 
     }
 
     ////////// GPS TIME ///////////////////
@@ -849,7 +849,7 @@ uint8_t Kestrel::syncTime()
     }
     else {
         timeSyncVals[1] = 0; //Clear if not updated
-        throwError(CLOCK_UNAVAILABLE | 0x200); //OR with GPS indicator 
+        throwError(CLOCK_UNAVAILABLE | 0x08); //OR with GPS indicator 
     }
 
 	
@@ -858,7 +858,7 @@ uint8_t Kestrel::syncTime()
     uint8_t rtcError = Wire.endTransmission();
     if(rtcError != 0) {
         timeSyncVals[2] = 0; //Clear if unable to connect to RTC
-        throwError(CLOCK_UNAVAILABLE | 0x100); //OR with RTC indicator 
+        throwError(CLOCK_UNAVAILABLE | 0x05); //OR with RTC indicator 
     }
     else { //Only read values in if able to connect to RTC
         rtcTime = rtc.getTimeUnix();
@@ -893,7 +893,7 @@ uint8_t Kestrel::syncTime()
         
         timeGood = true;
         source = TimeSource::CELLULAR;
-        if(!(abs(rtcTime - gpsTime) < maxTimeError && abs(rtcTime - particleTime) < maxTimeError && rtcTime != 0 && gpsTime != 0 && particleTime != 0) && timeSyncVals[2] != 0) throwError(CLOCK_MISMATCH | 0x100); //Check if RTC is within range of others, if not throw error (only if not caused by unavailability)
+        if(!(abs(rtcTime - gpsTime) < maxTimeError && abs(rtcTime - particleTime) < maxTimeError && rtcTime != 0 && gpsTime != 0 && particleTime != 0) && timeSyncVals[2] != 0) throwError(CLOCK_MISMATCH | 0x05); //Check if RTC is within range of others, if not throw error (only if not caused by unavailability)
     }
     else if(abs(particleTime - rtcTime) < maxTimeError && rtcTime != 0 && particleTime != 0) { //If cell and rtc agree
         Serial.println("CLOCK SOURCE: Cell and local match");
@@ -901,7 +901,7 @@ uint8_t Kestrel::syncTime()
         //Throw error
         timeGood = true;
         source = TimeSource::CELLULAR;
-        if(timeSyncVals[1] != 0) throwError(CLOCK_MISMATCH | 0x200); //Throw clock mismatch error, OR with GPS indicator (only if not caused by clock unavailabilty) 
+        if(timeSyncVals[1] != 0) throwError(CLOCK_MISMATCH | 0x08); //Throw clock mismatch error, OR with GPS indicator (only if not caused by clock unavailabilty) 
     }
     else if(abs(gpsTime - rtcTime) < maxTimeError && gpsTime != 0 && rtcTime != 0) { //If gps and rtc agree
         Serial.println("CLOCK SOURCE: GPS and local match");
@@ -909,7 +909,7 @@ uint8_t Kestrel::syncTime()
         //Throw error
         timeGood = true;
         source = TimeSource::GPS;
-        if(timeSyncVals[0] != 0) throwError(CLOCK_MISMATCH | 0x300); //Throw clock mismatch error, OR with Cell indicator (only if not caused by clock unavailabilty) 
+        if(timeSyncVals[0] != 0) throwError(CLOCK_MISMATCH | 0x06); //Throw clock mismatch error, OR with Cell indicator (only if not caused by clock unavailabilty) 
     }
     else { //No two sources agree, very bad!
         
@@ -1198,6 +1198,7 @@ bool Kestrel::feedWDT()
     } 
     else {
         // System.reset(); //DEBUG!
+        throwError(WDT_OFF_LEASH); //Report incoming error 
         return false;
     }
 }
