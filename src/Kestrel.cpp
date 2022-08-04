@@ -523,6 +523,17 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 	// return output + ",\"Pos\":[" + String(port) + "]}}"; //Append position and return
 	// return "{}"; //DEBUG!
 }
+bool Kestrel::connectToCell()
+{
+    //FIX! Check for cell module on, etc
+    Particle.connect();
+    waitFor(Particle.connected, CELL_TIMEOUT); //Wait for cell to connect
+    if(Particle.connected()) return true;
+    else {
+        throwError(CELL_FAIL); //FIX! add varing reasons for fail
+        return false;        
+    } 
+}
 
 bool Kestrel::enablePower(uint8_t port, bool state) 
 {
@@ -685,6 +696,13 @@ bool Kestrel::enableSD(bool state)
     enableI2C_Global(globState); //Return to previous state
     enableI2C_OB(obState);
     return currentState; //DEBUG! How to return failure? Don't both and just throw error??
+}
+
+bool Kestrel::sdInserted()
+{
+    ioOB.pinMode(PinsOB::SD_CD, INPUT_PULLUP);
+    if(ioOB.digitalRead(PinsOB::SD_CD) == LOW) return true; //If switch is closed, return true
+    else return false; //Otherwise it is not inserted 
 }
 
 bool Kestrel::enableAuxPower(bool state)
