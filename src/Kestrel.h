@@ -155,7 +155,7 @@ class Kestrel: public Sensor
 	const uint32_t CELL_FAIL = 0xF00700F6; ///<Failure to connect to cell network
     const uint32_t CLOUD_FAIL = 0xF00800F6; ///<Failure to connect to particle cloud
 	const uint32_t SYSTEM_RESET = 0xF00A0000; ///<Reported on first init, along with reason for reset
-	const uint32_t CLOCK_MISMATCH = 0x700100F0; ///<Mismatch between consensus time and one of the sources (subtype indicates which source)
+	const uint32_t CLOCK_MISMATCH = 0x700100F0; ///<Mismatch between consensus time and one of the sources 
 	const uint32_t CLOCK_NO_SYNC = 0x500103F0; ///<No two clock sources agree, unable to provide synced time
 	const uint32_t CLOCK_UNAVAILABLE = 0x500400F0; ///<One of the system clocks is unavailable to read from 
 	const uint32_t RTC_OSC_FAIL = 0x500500F5; ///<Failure of local RTC to increment 

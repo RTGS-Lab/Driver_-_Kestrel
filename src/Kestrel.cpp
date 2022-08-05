@@ -71,7 +71,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
         gps.setI2COutput(COM_TYPE_UBX);
     }
     // if(Particle.connected() == false) criticalFault = true; //If not connected to cell set critical error
-    if(criticalFault) setIndicatorState(IndicatorLight::STAT, IndicatorMode::ERROR); //If there is a critical fault, set the stat light
+    // if(criticalFault) setIndicatorState(IndicatorLight::STAT, IndicatorMode::ERROR_CRITICAL); //If there is a critical fault, set the stat light
     for(int i = 1; i <= 4; i++) {
         enablePower(i, true); //Default all power to on
         enableData(i, false); //Default all data to off
@@ -1021,12 +1021,19 @@ bool Kestrel::waitUntilTimerDone()
 
 bool Kestrel::statLED(bool state)
 {
-    bool currentGlob = enableI2C_Global(false);
-	bool currentOB = enableI2C_OB(true);
-    if(state) led.setOutput(7, On); //Turn stat on
-    else led.setOutput(7, Off); //Turn stat off
-    enableI2C_Global(currentGlob); //Reset to previous state
-    enableI2C_OB(currentOB); 
+    // bool currentGlob = enableI2C_Global(false);
+	// bool currentOB = enableI2C_OB(true);
+    // if(state) led.setOutput(7, On); //Turn stat on
+    // else led.setOutput(7, Off); //Turn stat off
+    // enableI2C_Global(currentGlob); //Reset to previous state
+    // enableI2C_OB(currentOB);
+    if(state) { //Assert control and set color to orange 
+        RGB.control(true);
+        RGB.color(0xFF,0x80,0x00); //Set to orange
+    }
+    else { //Release control if state is off
+        RGB.control(false);
+    }
     return false; //DEBUG!
 }
 
@@ -1112,12 +1119,30 @@ bool Kestrel::setIndicatorState(uint8_t ledBank, uint8_t mode)
                 led.setOutput(5, Off); //Turn green off
             }
             break;
+        case IndicatorLight::STAT:
+            if(mode == IndicatorMode::PASS) {
+                led.setOutput(7, Off); //Turn red off
+            }
+            if(mode == IndicatorMode::PREPASS) {
+                led.setOutput(7, Group); //Blinking
+            }
+            if(mode == IndicatorMode::WAITING) {
+                led.setOutput(7, Group); //Blinking
+            }
+            if(mode == IndicatorMode::ERROR) {
+                led.setOutput(7, On); //Solid
+            }
+            if(mode == IndicatorMode::ERROR_CRITICAL) {
+                led.setOutput(7, Group); //Blinking
+            }
+            break;
         case IndicatorLight::ALL:
             if(mode == IndicatorMode::WAITING) {
-                led.setOutputArray(Off); //Turn all LEDs off //DEBUG!
+                // led.setOutputArray(Off); //Turn all LEDs off //DEBUG!
                 // led.setBrightness(6, 50);
                 // led.setBrightness(4, 50);
                 // led.setBrightness(1, 50);
+                for(int i = 0; i < 6; i++) led.setOutput(i, Off); //Turn off all but Stat LED
                 led.setOutput(6, Group); //Set CELL amber to blink
                 led.setOutput(4, Group); //Set GPS amber to blink
                 led.setOutput(1, Group); //Set SENSOR amber to blink
@@ -1126,19 +1151,27 @@ bool Kestrel::setIndicatorState(uint8_t ledBank, uint8_t mode)
                 led.setOutputArray(Off); //Turn all LEDs off 
             }
             if(mode == IndicatorMode::INIT) {
-                led.setOutputArray(Off); //Turn all LEDs off //DEBUG!
-                led.setOutput(1, Group); //Blink amber with group
-                led.setOutput(2, Group); //Blink red with group
-                led.setOutput(6, Group); //Blink amber with group
-                led.setOutput(4, Group); //Blink amber with group
+                // led.setOutputArray(Off); //Turn all LEDs off //DEBUG!
+                // led.setOutput(1, Group); //Blink amber with group
+                // led.setOutput(2, Group); //Blink red with group
+                // led.setOutput(6, Group); //Blink amber with group
+                // led.setOutput(4, Group); //Blink amber with group
+                // for(int i = 0; i < 6; i++) led.setOutput(i, Off); //Turn off all but Stat LED
+                led.setOutputArray(Group); //Turn all LEDs to group blink
+                // for(int i = 0; i < 6; i++) led.setOutput(i, Group); //Control all but Stat LED
+                led.setGroupBlinkPeriod(250); //Set to fast blinking
+	            led.setGroupOnTime(25); 
             }
             if(mode == IndicatorMode::IDLE) {
-                led.setOutputArray(Group); //Turn all LEDs to group blink
+                // led.setOutputArray(Group); //Turn all LEDs to group blink
+                for(int i = 0; i < 6; i++) led.setOutput(i, Group); //Control all but Stat LED
+                //Allow to be normal blinking 
             }
             if(mode == IndicatorMode::COMMAND) {
-                led.setOutputArray(Group); //Turn all LEDs to group blink
-                led.setGroupBlinkPeriod(100); //Set to very fast blinking
-	            led.setGroupOnTime(25);  
+                // led.setOutputArray(Group); //Turn all LEDs to group blink
+                for(int i = 0; i < 6; i++) led.setOutput(i, Group); //Control all but Stat LED
+                led.setGroupBlinkPeriod(2000); //Set to very slow blinking
+	            led.setGroupOnTime(1000);  
             }
             break;
     }
