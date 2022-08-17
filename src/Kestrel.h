@@ -207,11 +207,13 @@ class Kestrel: public Sensor
 		bool feedWDT();
 		String getPosLat();
 		String getPosLong();
+		String getPosAlt();
 		time_t getPosTime();
 		String getPosTimeString();
 		bool configTalonSense();
 		unsigned long getMessageID();
 		bool testForBat();
+		bool zeroAccel(bool reset = false);
 
 
     private:
@@ -226,7 +228,7 @@ class Kestrel: public Sensor
 
 		
 		PCA9634 led;
-		const int ledBrightness = 50; //Default to 50% on
+		const int ledBrightness = 75; //Default to 75% on
 		const int ledPeriod = 500; //Default to 500ms period
 		const int ledOnTime = 250; //Default to 50% duty cycle
         // uint32_t errors[MAX_NUM_ERRORS] = {0};
@@ -249,6 +251,7 @@ class Kestrel: public Sensor
 		time_t lastTimeSync = 0; ///<Keep track of when the last time sync occoured 
 		long latitude = 0; ///<Used to keep track of the last pos measurment 
 		long longitude = 0; ///<Used to keep track of the last pos measurment 
+		long altitude = 0; ///<Used to keep track of the last pos measurment 
 		time_t posTime = 0; ///<Time last postition measurment was taken
 		bool initDone = false; //Used to keep track if the initaliztion has run - used by hasReset() 
 

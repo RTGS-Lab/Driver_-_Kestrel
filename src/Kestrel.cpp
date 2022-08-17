@@ -90,7 +90,7 @@ String Kestrel::getErrors()
 {
     // uint32_t temp[10] = {0}; //Temp array to store error vals read in from drivers
 
-    String output = "{\"KESTREL\":{"; // OPEN JSON BLOB
+    String output = "\"KESTREL\":{"; // OPEN JSON BLOB
 	output = output + "\"CODES\":["; //Open codes pair
 
 	for(int i = 0; i < min(MAX_NUM_ERRORS, numErrors); i++) { //Interate over used element of array without exceeding bounds
@@ -110,7 +110,7 @@ String Kestrel::getErrors()
 	else output = output + "0,"; //Otherwise set it as clear
 	output = output + "\"NUM\":" + String(numErrors + rtc.numErrors); //Append number of errors
 	// output = output + "\"Pos\":[" + String(talonPort + 1) + "," + String(sensorPort + 1) + "]"; //Concatonate position 
-	output = output + "}}"; //CLOSE JSON BLOB
+	output = output + "}"; //CLOSE JSON BLOB
 	numErrors = 0; //Clear error count
     rtc.numErrors = 0; 
 	return output;
@@ -124,11 +124,13 @@ String Kestrel::getData(time_t time)
     if(gps.getFixType() >= 2) { //Only update if GPS has at least a 2D fix
         longitude = gps.getLongitude();
         latitude = gps.getLatitude();
+        altitude = gps.getAltitude();
         posTime = getTime(); //Update time that GPS measure was made
     }
     enableI2C_Global(globState); //Return to previous state
     enableI2C_OB(obState);
-    return "{\"Kestrel\":null}";
+    // return "{\"Kestrel\":null}";
+    return "";
 }
 
 String Kestrel::getMetadata()
@@ -145,7 +147,7 @@ String Kestrel::getMetadata()
     bool auxState = enableAuxPower(true); //Turn on AUX power for GPS
     bool globState = enableI2C_Global(false); //Turn off external I2C
     bool obState = enableI2C_OB(true); //Turn on internal I2C
-    String metadata = "{\"Kestrel\":{";
+    String metadata = "\"Kestrel\":{";
     ////////// ADD GPS INFO
     // if(gps.begin() == false) throwError(GPS_INIT_FAIL);
     // else {
@@ -178,7 +180,7 @@ String Kestrel::getMetadata()
 	
 	metadata = metadata + "\"Firmware\":\"v" + FIRMWARE_VERSION + "\","; //Report firmware version as modded BCD
 	metadata = metadata + "\"Pos\":[15]"; //Concatonate position 
-	metadata = metadata + "}}"; //CLOSE  
+	metadata = metadata + "}"; //CLOSE  
     enableAuxPower(auxState); //Return to previous state
     enableI2C_Global(globState); 
     enableI2C_OB(obState);
@@ -190,26 +192,27 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 {
     bool globState = enableI2C_Global(false); //Turn off external I2C
     bool obState = enableI2C_OB(true); //Turn on internal I2C
-	String output = "{\"Kestrel\":{";
+	String output = "\"Kestrel\":{";
 	if(diagnosticLevel == 0) {
 		//TBD
-		output = output + "\"lvl-0\":{},";
+		// output = output + "\"lvl-0\":{},";
 	}
 
 	if(diagnosticLevel <= 1) {
 		//TBD
-		output = output + "\"lvl-1\":{},";
+		// output = output + "\"lvl-1\":{},";
 	}
 
 	if(diagnosticLevel <= 2) {
 		//TBD
-		output = output + "\"lvl-2\":{},";
+		// output = output + "\"lvl-2\":{},";
+        output = output + "\"Accel_Offset\":[" + String(accel.offset[0]) + "," + String(accel.offset[1]) + "," + String(accel.offset[2]) + "],"; 
 	}
 
 	if(diagnosticLevel <= 3) {
 		//TBD
 		// Serial.println(millis()); //DEBUG!
-		output = output + "\"lvl-3\":{"; //OPEN JSON BLOB
+		// output = output + "\"lvl-3\":{"; //OPEN JSON BLOB
         Wire.beginTransmission(0x6F);
         uint8_t rtcError = Wire.endTransmission();
         if(rtcError == 0) {
@@ -262,7 +265,7 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 		// ioAlpha.digitalWrite(pinsAlpha::LOOPBACK_EN, LOW); //Disable loopback 
 		// digitalWrite(KestrelPins::PortBPins[talonPort], LOW); //Return to default external connecton
 
-		output = output + "},"; //CLOSE JSON BLOB
+		// output = output + "},"; //CLOSE JSON BLOB
 		// return output + ",\"Pos\":[" + String(port) + "]}}";
 		// return output;
 
@@ -271,7 +274,7 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 	if(diagnosticLevel <= 4) {
 		// String output = selfDiagnostic(5); //Call the lower level of self diagnostic 
 		// output = output.substring(0,output.length() - 1); //Trim off closing brace
-		output = output + "\"lvl-4\":{"; //OPEN JSON BLOB
+		// output = output + "\"lvl-4\":{"; //OPEN JSON BLOB
 
 		// ioSense.begin(); //Initalize voltage sensor IO expander
 		///////////// SENSE VOLTAGE AND CURRENT FOR PORTS ///////////
@@ -425,29 +428,53 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 
 
         if(accel.begin() == 0) {
+            for(int i = 0; i < 3; i++) {
+                float temp = 0;
+                EEPROM.get(i*4, temp);
+                accel.offset[i] = temp; //Read in offset vals
+            }
             accel.updateAccelAll();
             output = output + "\"ACCEL\":[" + String(accel.data[0]) + "," + String(accel.data[1]) + "," + String(accel.data[2]) + "],"; 
             temperatureString = temperatureString + String(accel.getTemp(), 4);
         }
         else {
-            output = output + "\"ACCEL\":[null]";
+            output = output + "\"ACCEL\":[null],";
             temperatureString = temperatureString + "null";
         }
 		// ioSense.digitalWrite(pinsSense::MUX_EN, HIGH); //Turn MUX back off 
 		// digitalWrite(KestrelPins::PortBPins[talonPort], LOW); //Return to default external connecton
         temperatureString = temperatureString + "]";
-		output = output + temperatureString + "},"; //CLOSE JSON BLOB
+        output = output + "\"SIV\":" + String(gps.getSIV()) + ",\"FIX\":" + String(gps.getFixType()) + ",";
+		output = output + temperatureString + ","; 
 		// return output + ",\"Pos\":[" + String(port) + "]}}";
 		// return output;
 
 	}
 
 	if(diagnosticLevel <= 5) {
-		output = output + "\"lvl-5\":{"; //OPEN JSON BLOB
+		// output = output + "\"lvl-5\":{"; //OPEN JSON BLOB
         output = output + "\"Time Source\":" + String(timeSource) + ","; //Report the time souce selected from the last sync
         output = output + "\"Times\":[" + String((int)timeSyncVals[0]) + "," + String((int)timeSyncVals[1]) + "," + String((int)timeSyncVals[2]) + "],"; //Add reported times from last sync
         output = output + "\"Last Sync\":" + String((int)lastTimeSync) + ",";
-        output = output + "\"OB\":" + ioOB.readBus() + ",\"Talon\":" + ioTalon.readBus(); //Report the bus readings from the IO expanders
+        output = output + "\"OB\":" + ioOB.readBus() + ",\"Talon\":" + ioTalon.readBus() + ","; //Report the bus readings from the IO expanders
+        output = output + "\"I2C\":["; //Append identifer 
+        for(int adr = 0; adr < 128; adr++) { //Check for addresses present 
+            Wire.beginTransmission(adr);
+            // Wire.write(0x00);
+            int error = Wire.endTransmission();
+            // if(adr == 0) { //DEBUG!
+            //     // Serial.print("Zero Error: ");
+            //     // Serial.println(error); 
+            // }
+            if(error == 0) {
+                output = output + String(adr) + ",";
+            }
+            delay(1); //DEBUG!
+        }
+        if(output.substring(output.length() - 1).equals(",")) {
+            output = output.substring(0, output.length() - 1); //Trim trailing ',' if present
+        }
+        output = output + "],"; //Close array
 		// digitalWrite(KestrelPins::PortBPins[talonPort], HIGH); //Connect to internal I2C
 		// disableDataAll(); //Turn off all data 
 		// digitalWrite(KestrelPins::PortBPins[talonPort], HIGH); //Connect to internal I2C
@@ -514,7 +541,7 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 		// 	output = output + "]"; //Close array
 		// 	if(port < numPorts) output = output + ","; //Only add comma if not the last entry in array 
 		// }
-		output = output + "}"; //Close pair
+		// output = output + "}"; //Close pair
 		
 		
 		// // output = output + "}"; //CLOSE JSON BLOB, 
@@ -525,7 +552,7 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 	}
     enableI2C_Global(globState); //Return to previous state
     enableI2C_OB(obState);
-	return output + ",\"Pos\":[15]}}"; //Write position in logical form - Return compleated closed output
+	return output + "\"Pos\":[15]}"; //Write position in logical form - Return compleated closed output
 	// else return ""; //Return empty string if reaches this point 
 
 	// return "{}"; //Return null if reach end	
@@ -979,6 +1006,12 @@ String Kestrel::getPosLong()
     else return "null"; //Return null if position has not been initalized
 }
 
+String Kestrel::getPosAlt()
+{
+    if(altitude != 0) return String(altitude*(10E-4)); //Return in m 
+    else return "null"; //Return null if position has not been initalized
+}
+
 time_t Kestrel::getPosTime()
 {
     return posTime;
@@ -1041,12 +1074,13 @@ bool Kestrel::setIndicatorState(uint8_t ledBank, uint8_t mode)
 {
     bool currentGlob = enableI2C_Global(false);
 	bool currentOB = enableI2C_OB(true);
-    led.setBrightness(3, 25); //Reduce brightness of green LEDs //DEBUG!
-    led.setBrightness(5, 25);
-    led.setBrightness(1, 25);
+
     led.setBrightnessArray(ledBrightness); //Set all LEDs to 50% max brightness
 	led.setGroupBlinkPeriod(ledPeriod); //Set blink period to specified number of ms
 	led.setGroupOnTime(ledOnTime); //Set on time for each blinking period 
+    led.setBrightness(3, 25); //Reduce brightness of green LEDs //DEBUG!
+    led.setBrightness(5, 25);
+    led.setBrightness(1, 25);
     switch(ledBank) {
         case IndicatorLight::SENSORS:
             if(mode == IndicatorMode::PASS) {
@@ -1234,6 +1268,41 @@ bool Kestrel::feedWDT()
         throwError(WDT_OFF_LEASH); //Report incoming error 
         return false;
     }
+}
+
+bool Kestrel::zeroAccel(bool reset)
+{
+    if(reset) { //If commanded to reset, clear accel values
+        accel.offset[0] = 0;
+        accel.offset[1] = 0;
+        accel.offset[2] = 0;
+        // return false;
+    }
+    else {
+        // for(int i = 0; i < 3; i++) {
+        //     accel.offset[i] = -accel.getAccel(i); //Null each axis
+        // }
+        if(accel.begin() == 0) {
+            // accel.offset[0] = -accel.getAccel(0); //Null each axis
+            // accel.offset[1] = -accel.getAccel(1); //Null each axis
+            accel.offset[0] = 0; //Null each axis
+            accel.offset[1] = 0; //Null each axis
+            accel.offset[2] = 1 - accel.getAccel(2); //Set z to 1 
+        }
+        else {
+            accel.offset[0] = 0;
+            accel.offset[1] = 0;
+            accel.offset[2] = 0;
+            //THROW ERROR!
+        }
+        
+        // return true;
+    }
+    EEPROM.put(0, accel.offset[0]); //Write to long term storage
+    EEPROM.put(4, accel.offset[1]);
+    EEPROM.put(8, accel.offset[2]);
+    return reset;
+    
 }
 
 bool Kestrel::configTalonSense()
