@@ -30,6 +30,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
 {
     selfPointer = this;
     System.on(time_changed, timechange_handler);
+    System.on(out_of_memory, outOfMemoryHandler);
     #if defined(ARDUINO) && ARDUINO >= 100 
 		Wire.begin();
         Wire.setClock(400000); //Confirm operation in fast mode
@@ -425,6 +426,7 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
             temperatureString = temperatureString + "null,";
             //THROW ERROR
         }
+        atmos.~Adafruit_SHT4x(); //Delete objects
 
 
         if(accel.begin() == 0) {
@@ -453,6 +455,12 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 
 	if(diagnosticLevel <= 5) {
 		// output = output + "\"lvl-5\":{"; //OPEN JSON BLOB
+        if(System.freeMemory() < 15600) { //Throw error if RAM usage >90% //FIX! Check dynamically for amount of RAM available based on OS, etc 
+            throwError(RAM_CRITICAL); 
+            criticalFault = true; //Let WDT off leash to fix issue
+        }
+        else if(System.freeMemory() < 46800) throwError(RAM_LOW); //Throw error if RAM usage >75% //FIX! Check dynamically for amount of RAM available based on OS, etc 
+        output = output + "\"Free Mem\":" + String(System.freeMemory()) + ","; //DEBUG! Move to higher level later on
         output = output + "\"Time Source\":" + String(timeSource) + ","; //Report the time souce selected from the last sync
         output = output + "\"Times\":[" + String((int)timeSyncVals[0]) + "," + String((int)timeSyncVals[1]) + "," + String((int)timeSyncVals[2]) + "],"; //Add reported times from last sync
         output = output + "\"Last Sync\":" + String((int)lastTimeSync) + ",";
@@ -862,14 +870,17 @@ uint8_t Kestrel::syncTime()
     // }
     // if(gps.getDateValid() && gps.getTimeValid() && gps.getTimeFullyResolved()) {
     if((customPayload[19] & 0x0F) == 0x07) { //Check if all times are valid
-        struct tm timeinfo = {0}; //Create struct in C++ time land
-        timeinfo.tm_year = (customPayload[12] | (customPayload[13] << 8)) - 1900; //Years since 1900
-        timeinfo.tm_mon = customPayload[14] - 1; //Months since january
-        timeinfo.tm_mday = customPayload[15];
-        timeinfo.tm_hour = customPayload[16];
-        timeinfo.tm_min = customPayload[17];
-        timeinfo.tm_sec = customPayload[18];
-        gpsTime = timegm(&timeinfo); //Convert struct to unix time
+        // struct tm timeinfo = {0}; //Create struct in C++ time land
+
+        // timeinfo.tm_year = (customPayload[12] | (customPayload[13] << 8)) - 1900; //Years since 1900
+        // timeinfo.tm_mon = customPayload[14] - 1; //Months since january
+        // timeinfo.tm_mday = customPayload[15];
+        // timeinfo.tm_hour = customPayload[16];
+        // timeinfo.tm_min = customPayload[17];
+        // timeinfo.tm_sec = customPayload[18];
+        // gpsTime = timegm(&timeinfo); //Convert struct to unix time
+        gpsTime = cstToUnix((customPayload[12] | (customPayload[13] << 8)), customPayload[14], customPayload[15], customPayload[16], customPayload[17], customPayload[18]); //Convert current time to Unix time
+        // gpsTime = 0xDEADBEEF; //DEBUG!
         Serial.print("GPS Time: ");
         Serial.println(gpsTime); //DEBUG!
         timeSyncVals[1] = gpsTime; //Grab last time
@@ -1329,13 +1340,18 @@ void Kestrel::timechange_handler(system_event_t event, int param)
     // Serial.println(param); //DEBUG!
     if(event == time_changed) { //Confirm event type before proceeding 
         if(param == time_changed_sync && !(selfPointer->timeSyncRequested)) { 
-            Serial.println("TIME CHANGE: Auto"); //DEBUG!
+            // Serial.println("TIME CHANGE: Auto"); //DEBUG!
             selfPointer->syncTime(); //if time update not from manual sync (and sync not requested), call time sync to return to desired val
         }
-        if(param == time_changed_sync && selfPointer->timeSyncRequested) Serial.println("TIME CHANGE: Requested"); //DEBUG!
-        if(param == time_changed_manually) Serial.println("TIME CHANGE: Manual"); //DEBUG!
+        // if(param == time_changed_sync && selfPointer->timeSyncRequested) Serial.println("TIME CHANGE: Requested"); //DEBUG!
+        // if(param == time_changed_manually) Serial.println("TIME CHANGE: Manual"); //DEBUG!
     }
-    
+}
+
+void Kestrel::outOfMemoryHandler(system_event_t event, int param) {
+    // outOfMemory = param;
+    selfPointer->throwError(selfPointer->RAM_FULL); //Report RAM usage
+    selfPointer->criticalFault = true; //Let WDT off leash
 }
 
 time_t Kestrel::timegm(struct tm *tm)
@@ -1355,4 +1371,9 @@ time_t Kestrel::timegm(struct tm *tm)
     return ret;
 }
 
+time_t Kestrel::cstToUnix(int year, int month, int day, int hour, int minute, int second)
+{
+    unsigned long unixDate = day - 32075 + 1461*(year + 4800 + (month - 14)/12)/4 + 367*(month - 2 - (month - 14)/12*12)/12 - 3*((year + 4900 + (month - 14)/12)/100)/4 - 2440588; //Stolen from Communications of the ACM in October 1968 (Volume 11, Number 10), Henry F. Fliegel and Thomas C. Van Flandern - offset from Julian Date. Why mess with success? 
+    return unixDate*86400 + hour*3600 + minute*60 + second; //Convert unixDate to seconds, sum partial seconds from the current day
 
+}

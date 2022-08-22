@@ -146,7 +146,7 @@ struct dateTimeStruct {
 class Kestrel: public Sensor
 {
     constexpr static int MAX_NUM_ERRORS = 10; ///<Maximum number of errors to log before overwriting previous errors in buffer
-	const String FIRMWARE_VERSION = "1.0.0"; //FIX! Read from system??
+	const String FIRMWARE_VERSION = "1.1.0"; //FIX! Read from system??
 	
     const uint32_t KESTREL_PORT_RANGE_ERROR = 0x90010300; ///<Kestrel port assignment is out of range
 	const uint32_t CSA_INIT_FAIL = 0x100500F0; ///<Failure to initialize CSA Alpha or CSA Beta
@@ -162,6 +162,9 @@ class Kestrel: public Sensor
 	const uint32_t RTC_POWER_LOSS = 0x54B200F5; ///<Local RTC has encountered power failure 
 	const uint32_t RTC_READ_FAIL = 0x100C00F5; ///<Failure to read the onboard RTC
 	const uint32_t WDT_OFF_LEASH = 0xE00200FA; ///<WDT has not been fed when requested due to an outstanding critical fault
+	const uint32_t RAM_LOW = 0xF00B00FB; ///<RAM usage is greater than 75%
+	const uint32_t RAM_CRITICAL = 0x400400FB; ///<RAM usage greater than 90%, calling for reset
+	const uint32_t RAM_FULL = 0x400500FB; ///<RAM filled up such that a variable cannot be allocated, try to reset
 	const time_t CELL_TIMEOUT = 300000; ///<Amount of time [ms] to wait while trying to connect to cell
 	
 
@@ -242,6 +245,7 @@ class Kestrel: public Sensor
 		bool criticalFault = false; 
 		static Kestrel* selfPointer;
 		static void timechange_handler(system_event_t event, int param);
+		static void outOfMemoryHandler(system_event_t event, int param);
 		bool timeSyncRequested = false; ///<Used to indicate to the system that a time sync was requested from Particle and not to override
 		time_t timegm(struct tm *tm); //Portable implementation
 		time_t maxTimeError = 30; //Max time error allowed between clock sources [seconds]
@@ -254,7 +258,8 @@ class Kestrel: public Sensor
 		long altitude = 0; ///<Used to keep track of the last pos measurment 
 		time_t posTime = 0; ///<Time last postition measurment was taken
 		bool initDone = false; //Used to keep track if the initaliztion has run - used by hasReset() 
-
+		struct tm timeinfo = {0}; //Create struct in C++ time land
+		time_t cstToUnix(int year, int month, int day, int hour, int minute, int second);
 };		
 
 // constexpr uint8_t Kestrel::numTalonPorts; 
