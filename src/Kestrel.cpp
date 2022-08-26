@@ -71,6 +71,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     }
     else {
         gps.setI2COutput(COM_TYPE_UBX);
+        gps.setAutoPVT(true); //DEBUG!
     }
     //Read in accel offset from EEPROM. Do this here so it is only done once per reset cycle and is immediately available 
     for(int i = 0; i < 3; i++) { 
