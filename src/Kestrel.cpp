@@ -42,6 +42,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     bool obState = enableI2C_OB(true); //Turn on internal I2C
     if(ioOB.begin() != 0) criticalFault = true;
     if(ioTalon.begin() != 0) criticalFault = true;
+    ioTalon.safeMode(PCAL9535A::SAFEOFF); //DEBUG! //Turn safe mode off to speed up turn-off times for Talons
     enableAuxPower(true); //Turn on aux power 
     csaAlpha.begin();
     csaBeta.begin();
@@ -74,7 +75,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     // if(Particle.connected() == false) criticalFault = true; //If not connected to cell set critical error
     // if(criticalFault) setIndicatorState(IndicatorLight::STAT, IndicatorMode::ERROR_CRITICAL); //If there is a critical fault, set the stat light
     for(int i = 1; i <= 4; i++) {
-        enablePower(i, true); //Default all power to on
+        enablePower(i, false); //Default all power to off
         enableData(i, false); //Default all data to off
     }
     
