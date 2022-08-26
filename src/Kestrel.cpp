@@ -72,6 +72,13 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     else {
         gps.setI2COutput(COM_TYPE_UBX);
     }
+    //Read in accel offset from EEPROM. Do this here so it is only done once per reset cycle and is immediately available 
+    for(int i = 0; i < 3; i++) { 
+        float temp = 0;
+        EEPROM.get(i*4, temp); //Read in offset vals
+        if(!isnan(temp)) accel.offset[i] = temp; //Set offset vals if real number (meaning offset has been established)
+        else accel.offset[i] = 0; //If there is no existing offset, set to 0
+    }
     // if(Particle.connected() == false) criticalFault = true; //If not connected to cell set critical error
     // if(criticalFault) setIndicatorState(IndicatorLight::STAT, IndicatorMode::ERROR_CRITICAL); //If there is a critical fault, set the stat light
     for(int i = 1; i <= 4; i++) {
@@ -429,18 +436,19 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
         }
         atmos.~Adafruit_SHT4x(); //Delete objects
 
-
-        if(accel.begin() == 0) {
-            for(int i = 0; i < 3; i++) {
-                float temp = 0;
-                EEPROM.get(i*4, temp);
-                accel.offset[i] = temp; //Read in offset vals
+        int accelInitError = accel.begin();
+        if(accelInitError == 0) {
+            
+            int accelError = accel.updateAccelAll();
+            if(accelError != 0) {
+                throwError(ACCEL_DATA_FAIL | (accelError << 8)); //Throw error for failure to communicate with accel, OR error code
+                //FIX! Null outputs??
             }
-            accel.updateAccelAll();
             output = output + "\"ACCEL\":[" + String(accel.data[0]) + "," + String(accel.data[1]) + "," + String(accel.data[2]) + "],"; 
             temperatureString = temperatureString + String(accel.getTemp(), 4);
         }
         else {
+            throwError(ACCEL_DATA_FAIL | (accelInitError << 8)); //Throw error for failure to communicate with accel, OR error code 
             output = output + "\"ACCEL\":[null],";
             temperatureString = temperatureString + "null";
         }

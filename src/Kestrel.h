@@ -166,7 +166,8 @@ class Kestrel: public Sensor
 	const uint32_t RAM_CRITICAL = 0x400400FB; ///<RAM usage greater than 90%, calling for reset
 	const uint32_t RAM_FULL = 0x400500FB; ///<RAM filled up such that a variable cannot be allocated, try to reset
 	const time_t CELL_TIMEOUT = 300000; ///<Amount of time [ms] to wait while trying to connect to cell
-	
+	const uint32_t ACCEL_INIT_FAIL = 0x100C00F7; ///<Failed to initialize onboard accelerometer 
+	const uint32_t ACCEL_DATA_FAIL = 0x100D00F7; ///<Failed to read data from onboard accelerometer
 
     public:
         Kestrel();
