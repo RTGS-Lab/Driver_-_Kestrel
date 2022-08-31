@@ -80,6 +80,7 @@ namespace PinsOB {
 	constexpr uint16_t CE = 11;
 	constexpr uint16_t LED_EN = 13;
 	constexpr uint16_t CSA_EN = 14;
+	constexpr uint16_t GPS_INT = 7; 
 }
 
 namespace PinsTalon { //For Kestrel v1.1
@@ -154,6 +155,7 @@ class Kestrel: public Sensor
 	const uint32_t CSA_INIT_FAIL = 0x100500F0; ///<Failure to initialize CSA Alpha or CSA Beta
 	const uint32_t GPS_INIT_FAIL = 0x100A00F8; ///<Failure to initialize the onboard GPS
 	const uint32_t GPS_READ_FAIL = 0x100B00F8; ///<Failure to read from the onboard GPS
+	const uint32_t GPS_TIMEOUT = 0xF00C00F8; ///<Timeout ocoured while waiting for GPS to connect (>30 seconds)
 	const uint32_t CELL_FAIL = 0xF00700F6; ///<Failure to connect to cell network
     const uint32_t CLOUD_FAIL = 0xF00800F6; ///<Failure to connect to particle cloud
 	const uint32_t SYSTEM_RESET = 0xF00A0000; ///<Reported on first init, along with reason for reset
@@ -177,6 +179,8 @@ class Kestrel: public Sensor
         Kestrel();
 		SFE_UBLOX_GNSS gps;
         String begin(time_t time, bool &criticalFault, bool &fault);
+		int sleep();
+		int wake();
         bool enablePower(uint8_t port, bool state = true);
         bool enableData(uint8_t port, bool state = true);
 		bool setDirection(uint8_t port, bool sel);
