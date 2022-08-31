@@ -66,7 +66,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     if(rtc.begin(true) == 0) criticalFault = true; //Use with external oscilator, set critical fault if not able to connect 
     if(gps.begin() == false) {
         criticalFault = true; //DEBUG! ??
-        //Throw ERROR!
+        throwError(GPS_INIT_FAIL);
         Serial.println("GPS ERROR");
     }
     else {
@@ -131,7 +131,7 @@ String Kestrel::getData(time_t time)
     bool globState = enableI2C_Global(false); //Turn off external I2C
     bool obState = enableI2C_OB(true); //Turn on internal I2C
     enableAuxPower(true); //Turn on aux power 
-    if(gps.getFixType() >= 2) { //Only update if GPS has at least a 2D fix
+    if(gps.getFixType() >= 2 && gps.getFixType() <= 4 && gps.getGnssFixOk()) { //Only update if GPS has at least a 2D fix
         longitude = gps.getLongitude();
         latitude = gps.getLatitude();
         altitude = gps.getAltitude();
@@ -1340,6 +1340,119 @@ bool Kestrel::configTalonSense()
     enableI2C_OB(currentOB); 
     // enableI2C_Global(true); //Connect all together 
     return false; //DEBUG!
+}
+
+int Kestrel::sleep()
+{
+    SystemSleepConfiguration config;
+    // SystemSleepResult result;
+    switch(powerSaveMode) {
+        case PowerSaveModes::PERFROMANCE:
+            return 0; //Nothing to do for performance mode 
+            break; 
+        case PowerSaveModes::BALANCED:
+            
+            config.mode(SystemSleepMode::ULTRA_LOW_POWER) //Configure sleep mode
+                .network(NETWORK_INTERFACE_CELLULAR) //Keep network alive
+                // .flag(SystemSleepFlag::WAIT_CLOUD) //Wait for cloud communications to finish before going to sleep
+                // .duration(5min); //DEBUG!
+                .gpio(Pins::Clock_INT, FALLING); //Trigger on falling clock pulse
+            // enableSD(false); //Turn off SD power
+            ioOB.digitalWrite(PinsOB::LED_EN, HIGH); //Disable LEDs (if not done already) 
+            gps.powerOffWithInterrupt(3600000, VAL_RXM_PMREQ_WAKEUPSOURCE_EXTINT0); //Shutdown for an hour unless woken up via pin trip
+
+            // result = System.sleep(config);
+            // System.sleep(config); //DEBUG!
+            break;
+        case PowerSaveModes::LOW_POWER:
+            config.mode(SystemSleepMode::ULTRA_LOW_POWER) //Configure sleep mode
+                // .network(NETWORK_INTERFACE_CELLULAR) //Keep network alive
+                // .flag(SystemSleepFlag::WAIT_CLOUD) //Wait for cloud communications to finish before going to sleep
+                // .duration(5min); //DEBUG!
+                .gpio(Pins::Clock_INT, FALLING); //Trigger on falling clock pulse
+            // enableSD(false); //Turn off SD power
+            enableAuxPower(false); //Turn all aux power off
+            ioOB.digitalWrite(PinsOB::LED_EN, HIGH); //Disable LEDs (if not done already) 
+            // gps.powerOffWithInterrupt(3600000, VAL_RXM_PMREQ_WAKEUPSOURCE_EXTINT0); //Shutdown for an hour unless woken up via pin trip
+
+            // result = System.sleep(config);
+            // System.sleep(config); //DEBUG!
+            break;
+        case PowerSaveModes::ULTRA_LOW_POWER:
+            
+            config.mode(SystemSleepMode::ULTRA_LOW_POWER) //Configure sleep mode
+                // .network(NETWORK_INTERFACE_CELLULAR) //Keep network alive
+                // .flag(SystemSleepFlag::WAIT_CLOUD) //Wait for cloud communications to finish before going to sleep
+                // .duration(5min); //DEBUG!
+                .gpio(Pins::Clock_INT, FALLING); //Trigger on falling clock pulse
+            enableAuxPower(false); //Turn all aux power off
+            ioOB.digitalWrite(PinsOB::LED_EN, HIGH); //Disable LEDs (if not done already) 
+            ioOB.digitalWrite(PinsOB::CSA_EN, LOW); //Disable CSAs
+            // //SLEEP FRAM //FIX!
+            // Wire.beginTransmission(0x7C);
+            // Wire.write((0x50 << 1) | 0x01); //Shift to add "r/w" bit
+            // Wire.endTransmission(false);
+            // Wire.beginTransmission(0x43);
+            // Wire.endTransmission();
+            //SLEEP ACCEL //FIX!
+            Wire.beginTransmission(0x15);
+            Wire.write(0x0D); //Write to control register
+            Wire.write(0x01); //Set power down
+            Wire.endTransmission();
+            break;
+        default:
+            //THROW ERROR??
+            return 0; //Mimic perfromance mode if not specificed  
+            break; 
+    }
+    // return (int) result.wakeupReason(); //Return reason for wake if not bypassed
+    int fpscr = __get_FPSCR();
+    Serial.print("FPSCR Status: 0x");
+    Serial.println(fpscr, HEX);
+    Serial.flush();
+    __set_FPSCR(fpscr & ~0x7); //Clear error bits to prevent assertion failure 
+    System.sleep(config); //DEBUG!
+    return 1; //DEBUG! 
+}
+
+int Kestrel::wake()
+{
+    switch(powerSaveMode) {
+        case PowerSaveModes::PERFROMANCE:
+            return 0; //Nothing to do for performance mode 
+            break; 
+        case PowerSaveModes::BALANCED:
+            if((getTime() - posTime) > 3600) { //If it has been more than an hour since last GPS point reading
+                ioOB.pinMode(PinsOB::GPS_INT, OUTPUT); //Turn GPS back on by toggling int pin
+                ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
+                delay(1000);
+                ioOB.digitalWrite(PinsOB::GPS_INT, HIGH);
+                delay(1000);
+                ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
+                if(gps.begin() == false) {
+                    criticalFault = true; //DEBUG! ??
+                    throwError(GPS_INIT_FAIL);
+                    Serial.println("GPS ERROR");
+                }
+                else {
+                    gps.setI2COutput(COM_TYPE_UBX);
+                    gps.setAutoPVT(true); //DEBUG!
+                    unsigned long localTime = millis();
+                    while((gps.getFixType() < 2 || gps.getFixType() > 4) && !gps.getGnssFixOk() && (localTime - millis()) < 30000); //Wait up to 30 seconds to get a GPS fix, if not, move on
+                    if(!(gps.getFixType() >= 2 && gps.getFixType() <= 4)) { //If GPS failed to connect after that period, throw error
+                        throwError(GPS_TIMEOUT);
+                    }
+                }
+            }
+            enableSD(true); //Turn SD back on
+            
+            break;
+        default:
+            //THROW ERROR??
+            return 0; //Mimic perfromance mode if not specificed  
+            break; 
+    }
+    return 1; //DEBUG!
 }
 
 void Kestrel::timechange_handler(system_event_t event, int param)
