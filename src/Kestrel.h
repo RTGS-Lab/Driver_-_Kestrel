@@ -146,9 +146,9 @@ struct dateTimeStruct {
 class Kestrel: public Sensor
 {
     constexpr static int MAX_NUM_ERRORS = 10; ///<Maximum number of errors to log before overwriting previous errors in buffer
-	const String FIRMWARE_VERSION = "1.1.2"; //FIX! Read from system??
+	const String FIRMWARE_VERSION = "1.1.3"; //FIX! Read from system??
 	
-    const uint32_t KESTREL_PORT_RANGE_ERROR = 0x90010300; ///<Kestrel port assignment is out of range
+    const uint32_t KESTREL_PORT_RANGE_FAIL = 0x90010300; ///<Kestrel port assignment is out of range
 	const uint32_t CSA_INIT_FAIL = 0x100500F0; ///<Failure to initialize CSA Alpha or CSA Beta
 	const uint32_t GPS_INIT_FAIL = 0x100A00F8; ///<Failure to initialize the onboard GPS
 	const uint32_t GPS_READ_FAIL = 0x100B00F8; ///<Failure to read from the onboard GPS
@@ -165,10 +165,11 @@ class Kestrel: public Sensor
 	const uint32_t RAM_LOW = 0xF00B00FB; ///<RAM usage is greater than 75%
 	const uint32_t RAM_CRITICAL = 0x400400FB; ///<RAM usage greater than 90%, calling for reset
 	const uint32_t RAM_FULL = 0x400500FB; ///<RAM filled up such that a variable cannot be allocated, try to reset
-	const time_t CELL_TIMEOUT = 300000; ///<Amount of time [ms] to wait while trying to connect to cell
+	const uint32_t GPS_UNAVAILABLE = 0xF00C00F8; ///<Timed out while waiting to connect to GPS
 	const uint32_t ACCEL_INIT_FAIL = 0x100C00F7; ///<Failed to initialize onboard accelerometer 
 	const uint32_t ACCEL_DATA_FAIL = 0x100D00F7; ///<Failed to read data from onboard accelerometer
 
+	const time_t CELL_TIMEOUT = 300000; ///<Amount of time [ms] to wait while trying to connect to cell
     public:
         Kestrel();
 		SFE_UBLOX_GNSS gps;

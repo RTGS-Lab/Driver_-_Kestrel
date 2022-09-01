@@ -71,7 +71,20 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     }
     else {
         gps.setI2COutput(COM_TYPE_UBX);
-        gps.setAutoPVT(true); //DEBUG!
+        gps.setNavigationFrequency(1); //Produce 1 solutions per second
+        gps.setAutoPVT(false); //DEBUG!
+        Serial.print("GPS Stats: "); //DEBUG!
+        Serial.print(gps.getNavigationFrequency());
+        Serial.print("\t");
+        Serial.print(gps.getMeasurementRate());
+        Serial.print("\t");
+        Serial.println(gps.getNavigationRate());
+        Serial.print("GPS Attitude: ");
+        Serial.print(gps.getATTroll());
+        Serial.print("\t");
+        Serial.print(gps.getATTpitch());
+        Serial.print("\t");
+        Serial.println(gps.getATTheading());
     }
     //Read in accel offset from EEPROM. Do this here so it is only done once per reset cycle and is immediately available 
     for(int i = 0; i < 3; i++) { 
@@ -93,7 +106,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     enableI2C_Global(globState); //Return to previous state
     enableI2C_OB(obState);
     initDone = true;
-    return "{}"; //DEBUG!
+    return ""; //DEBUG!
 }
 
 String Kestrel::getErrors()
@@ -131,11 +144,15 @@ String Kestrel::getData(time_t time)
     bool globState = enableI2C_Global(false); //Turn off external I2C
     bool obState = enableI2C_OB(true); //Turn on internal I2C
     enableAuxPower(true); //Turn on aux power 
+    gps.getPVT(); //Force updated call //DEBUG!
     if(gps.getFixType() >= 2) { //Only update if GPS has at least a 2D fix
         longitude = gps.getLongitude();
         latitude = gps.getLatitude();
         altitude = gps.getAltitude();
         posTime = getTime(); //Update time that GPS measure was made
+    }
+    else {
+        throwError(GPS_UNAVAILABLE); //If no fix available, throw error
     }
     enableI2C_Global(globState); //Return to previous state
     enableI2C_OB(obState);
@@ -596,7 +613,7 @@ bool Kestrel::enablePower(uint8_t port, bool state)
         // return enableAuxPower(state); 
         return false; //DEBUG!
     }
-    if(port == 0 || port > numTalonPorts) throwError(KESTREL_PORT_RANGE_ERROR | portErrorCode);
+    if(port == 0 || port > numTalonPorts) throwError(KESTREL_PORT_RANGE_FAIL | portErrorCode);
     else {
         bool obState = enableI2C_OB(true);
         bool globState = enableI2C_Global(false);
@@ -618,7 +635,7 @@ bool Kestrel::enableData(uint8_t port, bool state)
         enableI2C_External(state); 
         return false; //DEBUG!
     }
-    if(port == 0 || port > numTalonPorts) throwError(KESTREL_PORT_RANGE_ERROR | portErrorCode);
+    if(port == 0 || port > numTalonPorts) throwError(KESTREL_PORT_RANGE_FAIL | portErrorCode);
     else {
         bool obState = enableI2C_OB(true);
         bool globState = enableI2C_Global(false);
@@ -642,7 +659,7 @@ bool Kestrel::setDirection(uint8_t port, bool sel)
         // enableI2C_External(state); 
         return false; //DEBUG!
     }
-    if(port == 0 || port > numTalonPorts) throwError(KESTREL_PORT_RANGE_ERROR | portErrorCode);
+    if(port == 0 || port > numTalonPorts) throwError(KESTREL_PORT_RANGE_FAIL | portErrorCode);
     else {
         bool obState = enableI2C_OB(true);
         bool globState = enableI2C_Global(false);
@@ -664,7 +681,7 @@ bool Kestrel::getFault(uint8_t port)
     if(port == 5) { //Port for (ext/batter port) is special case
         return false; //DEBUG!
     }
-    if(port == 0 || port > numTalonPorts) throwError(KESTREL_PORT_RANGE_ERROR | portErrorCode);
+    if(port == 0 || port > numTalonPorts) throwError(KESTREL_PORT_RANGE_FAIL | portErrorCode);
     else {
         bool state = true;
         bool globState = enableI2C_Global(false);
