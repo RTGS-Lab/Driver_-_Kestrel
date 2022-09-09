@@ -64,6 +64,15 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     // setIndicatorState(IndicatorLight::ALL,IndicatorMode::WAITING); //Set all to blinking wait
     
     if(rtc.begin(true) == 0) criticalFault = true; //Use with external oscilator, set critical fault if not able to connect 
+    //Perform wakeup in case switched off already
+    Serial.println("Wake GPS"); //DEBUG!
+    ioOB.pinMode(PinsOB::GPS_INT, OUTPUT); //Turn GPS back on by toggling int pin
+    ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
+    delay(1000);
+    ioOB.digitalWrite(PinsOB::GPS_INT, HIGH);
+    delay(1000);
+    ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
+    delay(1000);
     if(gps.begin() == false) {
         criticalFault = true; //DEBUG! ??
         throwError(GPS_INIT_FAIL);
@@ -95,7 +104,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     }
     // if(Particle.connected() == false) criticalFault = true; //If not connected to cell set critical error
     // if(criticalFault) setIndicatorState(IndicatorLight::STAT, IndicatorMode::ERROR_CRITICAL); //If there is a critical fault, set the stat light
-    for(int i = 1; i <= 4; i++) {
+    for(int i = 1; i <= numTalonPorts; i++) {
         enablePower(i, false); //Default all power to off
         enableData(i, false); //Default all data to off
     }
@@ -141,23 +150,6 @@ String Kestrel::getErrors()
 
 String Kestrel::getData(time_t time)
 {
-    bool globState = enableI2C_Global(false); //Turn off external I2C
-    bool obState = enableI2C_OB(true); //Turn on internal I2C
-    enableAuxPower(true); //Turn on aux power 
-    gps.getPVT(); //Force updated call //DEBUG!
-    if(gps.getFixType() >= 2) { //Only update if GPS has at least a 2D fix
-    if(gps.getFixType() >= 2 && gps.getFixType() <= 4 && gps.getGnssFixOk()) { //Only update if GPS has at least a 2D fix
-        longitude = gps.getLongitude();
-        latitude = gps.getLatitude();
-        altitude = gps.getAltitude();
-        posTime = getTime(); //Update time that GPS measure was made
-    }
-    else {
-        throwError(GPS_UNAVAILABLE); //If no fix available, throw error
-    }
-    enableI2C_Global(globState); //Return to previous state
-    enableI2C_OB(obState);
-    // return "{\"Kestrel\":null}";
     return "";
 }
 
@@ -485,6 +477,36 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
     enableI2C_OB(obState);
 	return output + "\"Pos\":[15]}"; //Write position in logical form - Return compleated closed output
 }
+
+bool Kestrel::updateLocation(bool forceUpdate) 
+{
+    bool status = false;
+    if(updateGPS || forceUpdate) {
+        bool globState = enableI2C_Global(false); //Turn off external I2C
+        bool obState = enableI2C_OB(true); //Turn on internal I2C
+        enableAuxPower(true); //Turn on aux power 
+        Serial.print("PVT Response: "); //DEBUG!
+        Serial.println(gps.getPVT());
+        // gps.getPVT(); //Force updated call //DEBUG!
+        if(gps.getPVT() && gps.getFixType() >= 2 && gps.getFixType() <= 4 && gps.getGnssFixOk()) { //Only update if GPS has at least a 2D fix
+            Serial.println("UPDATE GPS"); //DEBUG!
+            longitude = gps.getLongitude();
+            latitude = gps.getLatitude();
+            altitude = gps.getAltitude();
+            posTime = getTime(); //Update time that GPS measure was made
+            updateGPS = false; //Clear flag when done
+            status = true;
+        }
+        else {
+            throwError(GPS_UNAVAILABLE); //If no fix available, throw error
+            status = false;
+        }
+        enableI2C_Global(globState); //Return to previous state
+        enableI2C_OB(obState);
+    }
+    return status;
+}
+
 bool Kestrel::connectToCell()
 {
     //FIX! Check for cell module on, etc
@@ -785,6 +807,26 @@ uint8_t Kestrel::syncTime(bool force)
     }
 
     ////////// GPS TIME ///////////////////
+    bool currentAux = enableAuxPower(true);
+    bool currentGlob = enableI2C_Global(false);
+    bool currentOB = enableI2C_OB(true);
+    //Perform wakeup in case switched off already
+    Serial.println("Wake GPS"); //DEBUG!
+    ioOB.pinMode(PinsOB::GPS_INT, OUTPUT); //Turn GPS back on by toggling int pin
+    ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
+    delay(1000);
+    ioOB.digitalWrite(PinsOB::GPS_INT, HIGH);
+    delay(1000);
+    ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
+    delay(1000);
+    if(gps.begin() == false) {
+        throwError(GPS_INIT_FAIL); //DEBUG!
+        criticalFault = true; //Set critical fault since we can't init GPS
+        timeSyncVals[1] = 0; //Clear if not updated
+        throwError(CLOCK_UNAVAILABLE | 0x08); //OR with GPS indicator 
+        Serial.println("GPS FAIL"); //DEBUG!
+    }
+    else {
     
     // if(gps.begin() == false) throwError(GPS_INIT_FAIL);
     // else {
@@ -808,6 +850,26 @@ uint8_t Kestrel::syncTime(bool force)
         Serial.print("GPS UTC Validity: "); //DEBUG!
         Serial.println(customPayload[19], HEX);
 
+        if((customPayload[19] & 0x0F) == 0x07) { //Check if all times are valid
+            // struct tm timeinfo = {0}; //Create struct in C++ time land
+
+            // timeinfo.tm_year = (customPayload[12] | (customPayload[13] << 8)) - 1900; //Years since 1900
+            // timeinfo.tm_mon = customPayload[14] - 1; //Months since january
+            // timeinfo.tm_mday = customPayload[15];
+            // timeinfo.tm_hour = customPayload[16];
+            // timeinfo.tm_min = customPayload[17];
+            // timeinfo.tm_sec = customPayload[18];
+            // gpsTime = timegm(&timeinfo); //Convert struct to unix time
+            gpsTime = cstToUnix((customPayload[12] | (customPayload[13] << 8)), customPayload[14], customPayload[15], customPayload[16], customPayload[17], customPayload[18]); //Convert current time to Unix time
+            // gpsTime = 0xDEADBEEF; //DEBUG!
+            Serial.print("GPS Time: ");
+            Serial.println(gpsTime); //DEBUG!
+            timeSyncVals[1] = gpsTime; //Grab last time
+        }
+        else {
+            timeSyncVals[1] = 0; //Clear if not updated
+            throwError(CLOCK_UNAVAILABLE | 0x08); //OR with GPS indicator 
+        }
         // Serial.print("GPS Leap Seconds: "); //DEBUG!
         // Serial.println(customPayload[9]);
         
@@ -817,7 +879,7 @@ uint8_t Kestrel::syncTime(bool force)
         // Serial.print(gps.getMinute());
         // Serial.print(":");
         // Serial.println(gps.getSecond());
-    // }
+    }
     // if(gps.getDateValid() && gps.getTimeValid() && gps.getTimeFullyResolved()) {
     if((customPayload[19] & 0x0F) == 0x07 && (gps.getFixType() >= 2 && gps.getFixType() <= 4 && gps.getGnssFixOk())) { //Check if all times are valid AND fix is valid
         // struct tm timeinfo = {0}; //Create struct in C++ time land
@@ -1052,29 +1114,34 @@ String Kestrel::getTimeString()
 
 String Kestrel::getPosLat()
 {
+    if(updateGPS) updateLocation(); //Check if pending update, if so call it
     if(latitude != 0) return String(latitude*(10E-8)); //Return in degrees if value is legit
     else return "null"; //Return null if position has not been initalized
 }
 
 String Kestrel::getPosLong()
 {
+    if(updateGPS) updateLocation(); //Check if pending update, if so call it
     if(longitude != 0) return String(longitude*(10E-8)); //Return in degrees if value if legit
     else return "null"; //Return null if position has not been initalized
 }
 
 String Kestrel::getPosAlt()
 {
+    if(updateGPS) updateLocation(); //Check if pending update, if so call it
     if(altitude != 0) return String(altitude*(10E-4)); //Return in m 
     else return "null"; //Return null if position has not been initalized
 }
 
 time_t Kestrel::getPosTime()
 {
+    if(updateGPS) updateLocation(); //Check if pending update, if so call it
     return posTime;
 }
 
 String Kestrel::getPosTimeString()
 {
+    if(updateGPS) updateLocation(); //Check if pending update, if so call it
     if(posTime > 0) return String((int)posTime); //Return in time of last position measurment if legitimate
     else return "null"; //Return null if position has not been initalized
 }
@@ -1449,7 +1516,8 @@ int Kestrel::sleep()
     Serial.println(fpscr, HEX);
     Serial.flush();
     __set_FPSCR(fpscr & ~0x7); //Clear error bits to prevent assertion failure 
-    System.sleep(config); //DEBUG!
+    if(digitalRead(Pins::Clock_INT) != LOW) System.sleep(config); //If clock not triggered already, go to sleep
+    else return 0; //Otherwise exit with fail state //THROW ERROR!
     return 1; //DEBUG! 
 }
 
@@ -1461,12 +1529,14 @@ int Kestrel::wake()
             break; 
         case PowerSaveModes::BALANCED:
             if((getTime() - posTime) > 3600) { //If it has been more than an hour since last GPS point reading
+                Serial.println("Wake GPS"); //DEBUG!
                 ioOB.pinMode(PinsOB::GPS_INT, OUTPUT); //Turn GPS back on by toggling int pin
                 ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
                 delay(1000);
                 ioOB.digitalWrite(PinsOB::GPS_INT, HIGH);
                 delay(1000);
                 ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
+                delay(1000);
                 if(gps.begin() == false) {
                     criticalFault = true; //DEBUG! ??
                     throwError(GPS_INIT_FAIL);
@@ -1474,16 +1544,17 @@ int Kestrel::wake()
                 }
                 else {
                     gps.setI2COutput(COM_TYPE_UBX);
-                    gps.setAutoPVT(true); //DEBUG!
+                    // gps.setAutoPVT(true); //DEBUG!
                     unsigned long localTime = millis();
                     while((gps.getFixType() < 2 || gps.getFixType() > 4) && !gps.getGnssFixOk() && (localTime - millis()) < 30000); //Wait up to 30 seconds to get a GPS fix, if not, move on
                     if(!(gps.getFixType() >= 2 && gps.getFixType() <= 4)) { //If GPS failed to connect after that period, throw error
                         throwError(GPS_TIMEOUT);
                     }
+                    updateGPS = true; //Set flag so position is updated at next update call
                 }
             }
             enableSD(true); //Turn SD back on
-            
+            updateTime(); //Grab updated time each wakeup
             break;
         default:
             //THROW ERROR??
