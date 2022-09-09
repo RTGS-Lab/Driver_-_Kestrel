@@ -203,6 +203,7 @@ class Kestrel: public Sensor
 		uint8_t totalErrors() {
 			return numErrors + rtc.numErrors; 
 		}
+		bool updateLocation(bool forceUpdate = false);
 		bool connectToCell();
 
         static constexpr uint8_t numTalonPorts = 5; 
@@ -249,6 +250,7 @@ class Kestrel: public Sensor
         // int throwError(uint32_t error);
 		time_t timerStart = 0; //Start time for timer 
 		bool criticalFault = false; 
+		bool updateGPS = false; ///<Don't try to update until ready 
 		static Kestrel* selfPointer;
 		static void timechange_handler(system_event_t event, int param);
 		static void outOfMemoryHandler(system_event_t event, int param);
