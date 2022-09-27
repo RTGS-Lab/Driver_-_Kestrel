@@ -146,7 +146,7 @@ struct dateTimeStruct {
 class Kestrel: public Sensor
 {
     constexpr static int MAX_NUM_ERRORS = 10; ///<Maximum number of errors to log before overwriting previous errors in buffer
-	const String FIRMWARE_VERSION = "1.2.0"; //FIX! Read from system??
+	const String FIRMWARE_VERSION = "1.2.1"; //FIX! Read from system??
 	
     const uint32_t KESTREL_PORT_RANGE_FAIL = 0x90010300; ///<Kestrel port assignment is out of range
 	const uint32_t CSA_INIT_FAIL = 0x100500F0; ///<Failure to initialize CSA Alpha or CSA Beta
@@ -168,6 +168,7 @@ class Kestrel: public Sensor
 	const uint32_t GPS_UNAVAILABLE = 0xF00C00F8; ///<Timed out while waiting to connect to GPS
 	const uint32_t ACCEL_INIT_FAIL = 0x100C00F7; ///<Failed to initialize onboard accelerometer 
 	const uint32_t ACCEL_DATA_FAIL = 0x100D00F7; ///<Failed to read data from onboard accelerometer
+	const uint32_t ALARM_FAIL = 0x500600F5; ///<RTC alarm failed to wake device 
 
 	const time_t CELL_TIMEOUT = 300000; ///<Amount of time [ms] to wait while trying to connect to cell
     public:

@@ -231,6 +231,10 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 	if(diagnosticLevel <= 2) {
 		//TBD
         output = output + "\"Accel_Offset\":[" + String(accel.offset[0]) + "," + String(accel.offset[1]) + "," + String(accel.offset[2]) + "],"; 
+        uint8_t rtcConfigA = (rtc.readByte(0) & 0x80); //Read in ST bit
+        rtcConfigA = rtcConfigA | ((rtc.readByte(3) & 0x38) << 1); //Read in OSCRUN, PWRFAIL, VBATEN bits
+        uint8_t rtcConfigB = rtc.readByte(8); //Read in control byte
+        output = output + "\"RTC_Config\":[" + String(rtcConfigA) + "," + String(rtcConfigB) + "],"; //Concatonate to output
 	}
 
 	if(diagnosticLevel <= 3) {
@@ -954,7 +958,10 @@ bool Kestrel::waitUntilTimerDone()
         Particle.process(); //Run process continually while waiting in order to make sure device is responsive 
     } 
     if(digitalRead(Pins::Clock_INT) == LOW) return true; //If RTC triggers properly, return true, else return false 
-    else return false; 
+    else {
+        throwError(ALARM_FAIL); //Throw alarm error since RTC did not wake device 
+        return false; 
+    }
 }
 
 bool Kestrel::statLED(bool state)
