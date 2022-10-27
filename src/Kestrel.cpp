@@ -100,7 +100,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
         enableData(i, false); //Default all data to off
     }
     
-    syncTime(); 
+    syncTime(true); //Force a time sync on startup 
     // Particle.syncTime(); //DEBUG!
     // ioOB.pinMode(PinsOB::)
     enableI2C_Global(globState); //Return to previous state
@@ -445,9 +445,21 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
         }
         else if(System.freeMemory() < 46800) throwError(RAM_LOW); //Throw error if RAM usage >75% //FIX! Check dynamically for amount of RAM available based on OS, etc 
         output = output + "\"Free Mem\":" + String(System.freeMemory()) + ","; //DEBUG! Move to higher level later on
-        output = output + "\"Time Source\":" + String(timeSource) + ","; //Report the time souce selected from the last sync
-        output = output + "\"Times\":[" + String((int)timeSyncVals[0]) + "," + String((int)timeSyncVals[1]) + "," + String((int)timeSyncVals[2]) + "],"; //Add reported times from last sync
-        output = output + "\"Last Sync\":" + String((int)lastTimeSync) + ",";
+        output = output + "\"Time Source\":[\"" + sourceNames[timeSourceA] + "\",\"" + sourceNames[timeSourceB] + "\"],"; //Report the time souce selected from the last sync
+        output = output + "\"Times\":{\"LOCAL\":" + String((int)times[numClockSources - 1]) + ","; //Always have current time listed 
+        for(int i = 0; i < numClockSources - 1; i++) {
+            if(sourceRequested[i] == true) { //Only report the clock sources which were requested 
+                if(sourceAvailable[i] == true) {
+                    output = output + "\"" + sourceNames[i] + "\":" + String((int)times[i]) + ","; //If result is valid, append number
+                }
+                else output = output + "\"" + sourceNames[i] + "\":null,"; //If result not valid, append null
+            }
+        }
+        if(output.endsWith(",")) output.remove(output.length() - 1); //Trim trailing comma if needed
+        output = output + "},"; //Close blob
+        // output = output + "\"Times\":[" + String((int)timeSyncVals[0]) + "," + String((int)timeSyncVals[1]) + "," + String((int)timeSyncVals[2]) + "],"; //Add reported times from last sync
+        if(lastTimeSync > 0) output = output + "\"Last Sync\":" + String((int)lastTimeSync) + ",";
+        else output = output + "\"Last Sync\":null,";
         output = output + "\"OB\":" + ioOB.readBus() + ",\"Talon\":" + ioTalon.readBus() + ","; //Report the bus readings from the IO expanders
         output = output + "\"I2C\":["; //Append identifer 
         for(int adr = 0; adr < 128; adr++) { //Check for addresses present 
@@ -694,49 +706,88 @@ uint8_t Kestrel::updateTime()
     // return false;
 }
 
-uint8_t Kestrel::syncTime()
+uint8_t Kestrel::syncTime(bool force)
 {
     //Synchronize time across GPS, Cell and RTC
     Serial.println("TIME SYNC!"); //DEBUG!
     // Timestamp t = getRawTime(); //Get updated time
+    bool currentAux = enableAuxPower(true);
+    bool currentGlob = enableI2C_Global(false);
+    bool currentOB = enableI2C_OB(true);
     
+    // bool timeGood = true; //Result of time testing to see if time matches, assume the time is valid to start with 
+    timeGood = true; //Assume good and clear if any deviation 
+
     time_t gpsTime = 0;
-    time_t particleTime = 0;
+    time_t gpsSatTime = 0;
+    time_t cellTime = 0;
     time_t rtcTime = 0;
+    
+    static time_t previousTime = Time.now(); //Init to current time to throw warnings on startup, etc
+    static unsigned long previousMillis = millis(); //Init to current time to throw warnings on startup, etc
+    
+    
+    //Grab Particle RTC time and expected time from millis delta
+    time_t particleTime = Time.now();
+    times[numClockSources - 1] = particleTime; //Grab current particle RTC time
+    
     
     Serial.print("Timebase Start: "); //DEBUG!
     Serial.println(millis());
+
+    /////////// RTC TIME //////////////
+    Wire.beginTransmission(0x6F); //Check for presence of RTC //FIX! Find a better way to test if RTC time is available 
+    uint8_t rtcError = Wire.endTransmission();
+    sourceRequested[TimeSource::RTC] = true;
+    if(rtcError != 0) {
+        sourceAvailable[TimeSource::RTC] = false;
+        times[TimeSource::RTC] = 0; //Clear if unable to connect to RTC
+        throwError(CLOCK_UNAVAILABLE | 0x05); //OR with RTC indicator 
+    }
+    else { //Only read values in if able to connect to RTC
+        rtcTime = rtc.getTimeUnix();
+        Serial.print("RTC Time: ");
+        Serial.println(rtcTime); //DEBUG!
+        Serial.print("Particle Time: ");
+        Serial.println(cellTime);  
+        sourceAvailable[TimeSource::RTC] = true;
+        times[TimeSource::RTC] = rtcTime; //Grab last time
+    }
+    
     /////////// CELL TIME //////////////////
+    sourceRequested[TimeSource::CELLULAR] = true;
     if(Particle.connected()) {
         timeSyncRequested = true;
         Particle.syncTime();
         waitFor(Particle.syncTimeDone, 5000); //Wait until sync is done, at most 5 seconds //FIX!
         if(Particle.syncTimeDone()) { //Make sure sync time was actually completed 
             Time.zone(0); //Set to UTC 
-            particleTime = Time.now();
+            cellTime = Time.now();
             // timeSyncRequested = false; //Release control of time sync override 
             Serial.print("Cell Time: "); 
-            Serial.println(particleTime);
-            timeSyncVals[0] = Time.now(); //Grab last time
+            Serial.println(cellTime);
+            sourceAvailable[TimeSource::CELLULAR] = true; 
+            times[TimeSource::CELLULAR] = Time.now(); //Grab last time
         }
         else {
-            timeSyncVals[0] = 0;
+            sourceAvailable[TimeSource::CELLULAR] = false;
+            times[TimeSource::CELLULAR] = 0;
             throwError(CLOCK_UNAVAILABLE | 0x06); //OR with Cell indicator 
         }
         timeSyncRequested = false; //Release control of time sync override 
         
     }
     else {
-        timeSyncVals[0] = 0; //Clear if not updated
+        sourceAvailable[TimeSource::CELLULAR] = false;
+        times[TimeSource::CELLULAR] = 0; //Clear if not updated
         throwError(CLOCK_UNAVAILABLE | 0x06); //OR with Cell indicator 
     }
 
     ////////// GPS TIME ///////////////////
-    bool currentAux = enableAuxPower(true);
-    bool currentGlob = enableI2C_Global(false);
-    bool currentOB = enableI2C_OB(true);
+    
     // if(gps.begin() == false) throwError(GPS_INIT_FAIL);
     // else {
+        sourceRequested[TimeSource::GPS] = true;
         gps.setI2COutput(COM_TYPE_UBX); //Set the I2C port to output UBX only (turn off NMEA noise)
         uint8_t customPayload[MAX_PAYLOAD_SIZE]; // This array holds the payload data bytes. MAX_PAYLOAD_SIZE defaults to 256. The CFG_RATE payload is only 6 bytes!
         gps.setPacketCfgPayloadSize(MAX_PAYLOAD_SIZE);
@@ -767,7 +818,7 @@ uint8_t Kestrel::syncTime()
         // Serial.println(gps.getSecond());
     // }
     // if(gps.getDateValid() && gps.getTimeValid() && gps.getTimeFullyResolved()) {
-    if((customPayload[19] & 0x0F) == 0x07) { //Check if all times are valid
+    if((customPayload[19] & 0x0F) == 0x07 && (gps.getFixType() >= 2 && gps.getFixType() <= 4 && gps.getGnssFixOk())) { //Check if all times are valid AND fix is valid
         // struct tm timeinfo = {0}; //Create struct in C++ time land
 
         // timeinfo.tm_year = (customPayload[12] | (customPayload[13] << 8)) - 1900; //Years since 1900
@@ -778,106 +829,201 @@ uint8_t Kestrel::syncTime()
         // timeinfo.tm_sec = customPayload[18];
         // gpsTime = timegm(&timeinfo); //Convert struct to unix time
         gpsTime = cstToUnix((customPayload[12] | (customPayload[13] << 8)), customPayload[14], customPayload[15], customPayload[16], customPayload[17], customPayload[18]); //Convert current time to Unix time
-        // gpsTime = 0xDEADBEEF; //DEBUG!
         Serial.print("GPS Time: ");
         Serial.println(gpsTime); //DEBUG!
-        timeSyncVals[1] = gpsTime; //Grab last time
+        sourceAvailable[TimeSource::GPS] = true;
+        sourceAvailable[TimeSource::GPS_RTC] = true; //By default
+        times[TimeSource::GPS] = gpsTime; //Grab last time
+        times[TimeSource::GPS_RTC] = gpsTime; //Grab last time
+    }
+    else if((customPayload[19] & 0x0F) == 0x07 && !(gps.getFixType() >= 2 && gps.getFixType() <= 4 && gps.getGnssFixOk())) { //RTC is good, but not active fix
+        gpsTime = cstToUnix((customPayload[12] | (customPayload[13] << 8)), customPayload[14], customPayload[15], customPayload[16], customPayload[17], customPayload[18]); //Convert current time to Unix time
+        Serial.print("GPS RTC Time: ");
+        Serial.println(gpsTime); //DEBUG!
+        sourceAvailable[TimeSource::GPS] = false;
+        sourceAvailable[TimeSource::GPS_RTC] = true;
+        times[TimeSource::GPS_RTC] = gpsTime; //Grab last time
     }
     else {
-        timeSyncVals[1] = 0; //Clear if not updated
+        sourceAvailable[TimeSource::GPS] = false;
+        sourceAvailable[TimeSource::GPS_RTC] = true;
+        times[TimeSource::GPS]  = 0; //Clear if not updated
+        times[TimeSource::GPS_RTC]  = 0;
         throwError(CLOCK_UNAVAILABLE | 0x08); //OR with GPS indicator 
     }
 
-	
-    /////////// RTC TIME //////////////
-    Wire.beginTransmission(0x6F); //Check for presence of RTC //FIX! Find a better way to test if RTC time is available 
-    uint8_t rtcError = Wire.endTransmission();
-    if(rtcError != 0) {
-        timeSyncVals[2] = 0; //Clear if unable to connect to RTC
-        throwError(CLOCK_UNAVAILABLE | 0x05); //OR with RTC indicator 
-    }
-    else { //Only read values in if able to connect to RTC
-        rtcTime = rtc.getTimeUnix();
-        Serial.print("RTC Time: ");
-        Serial.println(rtcTime); //DEBUG!
-        Serial.print("Particle Time: ");
-        Serial.println(particleTime);  
-        timeSyncVals[2] = rtcTime; //Grab last time
-    }
-    
-    uint8_t source = TimeSource::NONE; //Default to none unless otherwise set
-    if(abs(rtcTime - gpsTime) < maxTimeError && abs(rtcTime - particleTime) < maxTimeError && rtcTime != 0 && gpsTime != 0 && particleTime != 0) { //If both updated sources match local time
-        Serial.println("CLOCK SOURCE: All match");
-        timeGood = true;
-        source = TimeSource::CELLULAR; //Report cell as the most comprehensive source
+    ////////////////////////////////// TEST VALIDITY OF CURRENT TIME ////////////////////////////////////////////
+    for(int i = 0; i < numClockSources; i++) {
+        if(sourceAvailable[i] == true && abs(particleTime - times[i]) > maxTimeError) {
+            //THROW ERROR!
+            timeGood = false; //Clear flag if any of the available times disagree with the current time
+        }
     }
 
-    if(abs(particleTime - gpsTime) < maxTimeError && gpsTime != 0 && particleTime != 0) { //If both updated variables match //FIX! This should be just an if, not an if else, so the RTC is updated 
-        Serial.println("CLOCK SOURCE: GPS and Cell match");
-        // time_t currentTime = Time.now(); //Ensure sync and that local offset is not applied 
-        // rtc.setTime(Time.year(currentTime), Time.month(currentTime), Time.day(currentTime), Time.hour(currentTime), Time.minute(currentTime), Time.second(currentTime)); //Set RTC from Cell
-        if(particleTime != 0) { //DEBUG! RESTORE!
-            time_t currentTime = particleTime; //Grab time from cell, even though it is old, to ensure correct time is being set //FIX!
-            Serial.print("RTC Set Time: "); //DEBUG!
-            Serial.print(Time.hour(currentTime));
-            Serial.print(":");
-            Serial.print(Time.minute(currentTime));
-            Serial.print(":");
-            Serial.println(Time.second(currentTime));
-            rtc.setTime(Time.year(currentTime), Time.month(currentTime), Time.day(currentTime), Time.hour(currentTime), Time.minute(currentTime), Time.second(currentTime)); //Set RTC from Cell
+    /////////////////////////// EVALUATE TIME FIX FROM TIME SET ////////////////////////////////
+    if(timeGood) { //Only do if time is alredy valid
+        if(sourceAvailable[TimeSource::GPS] == true && sourceAvailable[TimeSource::CELLULAR] == true) timeFix = 4; //If both remote time sources are present, best fix
+        else if(sourceAvailable[TimeSource::GPS] == true || sourceAvailable[TimeSource::CELLULAR] == true) timeFix = 3; //If only ONE of the remote sources is present, level 3 fix
+        else if(sourceAvailable[TimeSource::GPS_RTC] == true || sourceAvailable[TimeSource::RTC] == true) timeFix = 2; //If only local source present, level 2 fix
+        else if(sourceAvailable[TimeSource::INCREMENT] == true) timeFix = 1; //If only delta time agrees, level 1 fix
+        else {
+            timeFix = 0; //If not even delta time agrees, there is no fix
+            criticalFault = true;
+            throwError(CLOCK_NO_SYNC); //Report lack of sync as error 
         }
-        
-        timeGood = true;
-        source = TimeSource::CELLULAR;
-        if(!(abs(rtcTime - gpsTime) < maxTimeError && abs(rtcTime - particleTime) < maxTimeError && rtcTime != 0 && gpsTime != 0 && particleTime != 0) && timeSyncVals[2] != 0) throwError(CLOCK_MISMATCH | 0x05); //Check if RTC is within range of others, if not throw error (only if not caused by unavailability)
     }
-    else if(abs(particleTime - rtcTime) < maxTimeError && rtcTime != 0 && particleTime != 0) { //If cell and rtc agree
-        Serial.println("CLOCK SOURCE: Cell and local match");
-        //Can we set the GPS time??
-        //Throw error
-        timeGood = true;
-        source = TimeSource::CELLULAR;
-        if(timeSyncVals[1] != 0) throwError(CLOCK_MISMATCH | 0x08); //Throw clock mismatch error, OR with GPS indicator (only if not caused by clock unavailabilty) 
-    }
-    else if(abs(gpsTime - rtcTime) < maxTimeError && gpsTime != 0 && rtcTime != 0) { //If gps and rtc agree
-        Serial.println("CLOCK SOURCE: GPS and local match");
-        Time.setTime(gpsTime); //Set particle time from GPS time
-        //Throw error
-        timeGood = true;
-        source = TimeSource::GPS;
-        if(timeSyncVals[0] != 0) throwError(CLOCK_MISMATCH | 0x06); //Throw clock mismatch error, OR with Cell indicator (only if not caused by clock unavailabilty) 
-    }
-    else { //No two sources agree, very bad!
-        
-        if(rtcTime > 1641016800) { //Jan 1, 2022, date seems to be reeasonable //FIX!
-            Serial.println("CLOCK SOURCE: Stale RTC"); //DEBUG!
-            Time.setTime(rtc.getTimeUnix()); //Set time from RTC   
-            timeGood = true;
-            source = TimeSource::RTC;
-            //Throw mismatch errors as needed //FIX!??
-            // if(timeSyncVals[0] != 0) throwError(CLOCK_MISMATCH | 0x300); //Throw clock mismatch error, OR with Cell indicator (only if not caused by clock unavailabilty) 
-            // if(timeSyncVals[1] != 0) throwError(CLOCK_MISMATCH | 0x200); //Throw clock mismatch error, OR with GPS indicator (only if not caused by clock unavailabilty) 
+
+
+    //////////////////////////// SET TIME ////////////////////////////
+    uint8_t source = 0; 
+    if(timeGood == false || force == true) { //If there is an error in time, go to set time
+        // int8_t sourceA = TimeSource::NONE; //Keep track of which sources are used
+        // int8_t sourceB = TimeSource::NONE;
+        if(sourceAvailable[TimeSource::GPS] ^ sourceAvailable[TimeSource::CELLULAR]) { //If only ONE of the external sources is avilible 
+            uint8_t remoteSource = sourceAvailable[TimeSource::GPS] ? TimeSource::GPS : TimeSource::CELLULAR; //Check which remote source is availible 
+            timeSourceA = remoteSource;
+            for(int t = 0; t < (numClockSources - 1); t++) {
+                if(abs(times[remoteSource] - times[t]) < maxTimeError && t != remoteSource) { //If available time matches with another time (2 times agree) that is not iself, proceed with the time set
+                    timeSourceB = t; //Record secondary source
+                    Time.setTime(times[remoteSource]);  //Set 
+                    rtc.setTime(Time.year(times[remoteSource]), Time.month(times[remoteSource]), Time.day(times[remoteSource]), Time.hour(times[remoteSource]), Time.minute(times[remoteSource]), Time.second(times[remoteSource]));
+                    timeGood = true; //Assert flag after time set
+                    break; //Exit after the highest tier is used
+                }
+            }
+            if(!timeGood) { //If no matching time found, set to none and set time anyway
+                timeSourceB = TimeSource::NONE; //Set even if find no agreeing time
+                Time.setTime(times[remoteSource]);  //Set
+                rtc.setTime(Time.year(times[remoteSource]), Time.month(times[remoteSource]), Time.day(times[remoteSource]), Time.hour(times[remoteSource]), Time.minute(times[remoteSource]), Time.second(times[remoteSource]));
+            }
+
         }
         else {
-            Serial.println("CLOCK SOURCE: NONE"); //DEBUG!
-            criticalFault = true; //FIX??
-            timeGood = false; 
-            Time.setTime(946684800); //Set time back to year 2000
-            source = TimeSource::NONE;
+            for(int i = 0; i < (numClockSources - 1); i++) { //Set options do not include current time itself, start with most legit result and go from there
+                if(sourceAvailable[i] == true && timeGood == false) { //If source is available and sync not finished
+                    timeSourceA = i; //Record highest priority source
+                    for(int t = 0; t < (numClockSources - 1); t++) {
+                        if(abs(times[i] - times[t]) < maxTimeError && t != i) { //If available time matches with another time (2 times agree) that is not iself, proceed with the time set
+                            timeSourceB = t; //Record secondary source
+                            Time.setTime(times[i]);  //Set 
+                            if(timeSourceA <= TimeSource::CELLULAR) { //If a tier 1 or 2 value is used, also update the kestrel RTC
+                                rtc.setTime(Time.year(times[i]), Time.month(times[i]), Time.day(times[i]), Time.hour(times[i]), Time.minute(times[i]), Time.second(times[i]));
+                            }
+                            timeGood = true; //Assert flag after time set
+                            break; //Exit after the highest tier is used
+                        }
+                    }
+                }
+            }
+        } 
+        //Evaluate new time set
+        if(timeSourceA == TimeSource::GPS && timeSourceB == TimeSource::CELLULAR) timeFix = 4; //If both remote time sources are present, best fix
+        else if(timeSourceA == TimeSource::GPS || timeSourceA == TimeSource::CELLULAR) timeFix = 3; //If only ONE of the remote sources is present, level 3 fix
+        else if(timeSourceA == TimeSource::GPS_RTC || timeSourceA == TimeSource::RTC) timeFix = 2; //If only local source present, level 2 fix
+        else if(timeSourceA == TimeSource::INCREMENT) timeFix = 1; //If only delta time agrees, level 1 fix
+        else {
+            timeFix = 0; //If not even delta time agrees, there is no fix
+            criticalFault = true;
+            throwError(CLOCK_NO_SYNC); //Report lack of sync as error 
         }
-        throwError(CLOCK_NO_SYNC); //Throw error regardless of which state, because no two sources are able to agree we have a sync failure 
+        if(timeFix > 0 && timeGood == true) {
+            unsigned long deltaTime = millis() - previousMillis; //Calculate delta time since last call
+            deltaTime = deltaTime/1000; //Convert to seconds - Do this as seperate process to make sure rollover math works correclty 
+            sourceRequested[TimeSource::INCREMENT] = true; 
+            if(previousTime == Time.now() || Time.isValid() == false || deltaTime == 0) sourceAvailable[TimeSource::INCREMENT] = false; //If set for the first time or not incremented, ignore
+            else sourceAvailable[TimeSource::INCREMENT] = true;
+            times[TimeSource::INCREMENT] = previousTime + deltaTime; //The expected time is the delta added to the last time recorded 
+
+            lastTimeSync = Time.now(); //Update time of last sync
+            previousTime = Time.now(); //Grab updated time before exiting
+            previousMillis = millis(); //Grab millis before exiting
+        }
+        else lastTimeSync = 0; //Otherwise indiciate sync failed
+    }
+    source = timeSourceA; //Use highest value as source
+
+    
+
+	
+    
+    
+    // uint8_t source = TimeSource::NONE; //Default to none unless otherwise set
+    // if(abs(rtcTime - gpsTime) < maxTimeError && abs(rtcTime - cellTime) < maxTimeError && rtcTime != 0 && gpsTime != 0 && cellTime != 0) { //If both updated sources match local time
+    //     Serial.println("CLOCK SOURCE: All match");
+    //     timeGood = true;
+    //     source = TimeSource::CELLULAR; //Report cell as the most comprehensive source
+    // }
+
+    // if(abs(cellTime - gpsTime) < maxTimeError && gpsTime != 0 && cellTime != 0) { //If both remote variables match, update the time no mater what the state of the rest are
+    //     Serial.println("CLOCK SOURCE: GPS and Cell match");
+    //     // time_t currentTime = Time.now(); //Ensure sync and that local offset is not applied 
+    //     // rtc.setTime(Time.year(currentTime), Time.month(currentTime), Time.day(currentTime), Time.hour(currentTime), Time.minute(currentTime), Time.second(currentTime)); //Set RTC from Cell
+    //     if(cellTime != 0) { //DEBUG! RESTORE!
+    //         time_t currentTime = cellTime; //Grab time from cell, even though it is old, to ensure correct time is being set //FIX!
+    //         Serial.print("RTC Set Time: "); //DEBUG!
+    //         Serial.print(Time.hour(currentTime));
+    //         Serial.print(":");
+    //         Serial.print(Time.minute(currentTime));
+    //         Serial.print(":");
+    //         Serial.println(Time.second(currentTime));
+    //         rtc.setTime(Time.year(currentTime), Time.month(currentTime), Time.day(currentTime), Time.hour(currentTime), Time.minute(currentTime), Time.second(currentTime)); //Set RTC from Cell
+    //     }
+        
+    //     timeGood = true;
+    //     source = TimeSource::CELLULAR;
+    //     if(!(abs(rtcTime - gpsTime) < maxTimeError && abs(rtcTime - cellTime) < maxTimeError && rtcTime != 0 && gpsTime != 0 && cellTime != 0) && timeSyncVals[2] != 0) throwError(CLOCK_MISMATCH | 0x05); //Check if RTC is within range of others, if not throw error (only if not caused by unavailability)
+    // }
+    // else if(abs(cellTime - rtcTime) < maxTimeError && rtcTime != 0 && cellTime != 0) { //If cell and rtc agree
+    //     Serial.println("CLOCK SOURCE: Cell and local match");
+    //     //Can we set the GPS time??
+    //     //Throw error
+    //     timeGood = true;
+    //     source = TimeSource::CELLULAR;
+    //     if(timeSyncVals[1] != 0) throwError(CLOCK_MISMATCH | 0x08); //Throw clock mismatch error, OR with GPS indicator (only if not caused by clock unavailabilty) 
+    // }
+    // else if(abs(gpsTime - rtcTime) < maxTimeError && gpsTime != 0 && rtcTime != 0) { //If gps and rtc agree
+    //     Serial.println("CLOCK SOURCE: GPS and local match");
+    //     Time.setTime(gpsTime); //Set particle time from GPS time
+    //     //Throw error
+    //     timeGood = true;
+    //     source = TimeSource::GPS;
+    //     if(timeSyncVals[0] != 0) throwError(CLOCK_MISMATCH | 0x06); //Throw clock mismatch error, OR with Cell indicator (only if not caused by clock unavailabilty) 
+    // }
+    // else { //No two sources agree, very bad!
+        
+    //     if(rtcTime > 1641016800) { //Jan 1, 2022, date seems to be reeasonable //FIX!
+    //         Serial.println("CLOCK SOURCE: Stale RTC"); //DEBUG!
+    //         Time.setTime(rtc.getTimeUnix()); //Set time from RTC   
+    //         timeGood = true;
+    //         source = TimeSource::RTC;
+    //         //Throw mismatch errors as needed //FIX!??
+    //         // if(timeSyncVals[0] != 0) throwError(CLOCK_MISMATCH | 0x300); //Throw clock mismatch error, OR with Cell indicator (only if not caused by clock unavailabilty) 
+    //         // if(timeSyncVals[1] != 0) throwError(CLOCK_MISMATCH | 0x200); //Throw clock mismatch error, OR with GPS indicator (only if not caused by clock unavailabilty) 
+    //     }
+    //     else {
+    //         Serial.println("CLOCK SOURCE: NONE"); //DEBUG!
+    //         criticalFault = true; //FIX??
+    //         timeGood = false; 
+    //         Time.setTime(946684800); //Set time back to year 2000
+    //         source = TimeSource::NONE;
+    //     }
+    //     throwError(CLOCK_NO_SYNC); //Throw error regardless of which state, because no two sources are able to agree we have a sync failure 
 
         
-    }
-    if(source != TimeSource::NONE && source != TimeSource::RTC) lastTimeSync = getTime(); //If time has been sourced, update the last sync time
-    else lastTimeSync = 0; //Otherwise, set back to unknown time
-    timeSource = source; //Grab the time source used 
-    // return false; //DEBUG!
+    // }
+    // if(source != TimeSource::NONE && source != TimeSource::RTC) lastTimeSync = getTime(); //If time has been sourced, update the last sync time
+    // else lastTimeSync = 0; //Otherwise, set back to unknown time
+    // timeSource = source; //Grab the time source used 
+    // // return false; //DEBUG!
     enableAuxPower(currentAux); //Return all to previous states
     enableI2C_Global(currentGlob);
     enableI2C_OB(currentOB);
     Serial.print("Timebase End: "); //DEBUG!
     Serial.println(millis());
+    // if(timeGood == true) {
+    //     previousTime = Time.now(); //Grab updated time before exiting
+    //     previousMillis = millis(); //Grab millis before exiting
+    // }
     return source;
 }
 

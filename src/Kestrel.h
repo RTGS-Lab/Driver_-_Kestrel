@@ -106,10 +106,12 @@ namespace PinsTalon { //For Kestrel v1.1
 }
 
 namespace TimeSource { //FIX!
-	constexpr uint8_t RTC = 1;
-	constexpr uint8_t CELLULAR = 3;
-	constexpr uint8_t GPS = 2; 
-	constexpr uint8_t NONE = 0;
+	constexpr uint8_t INCREMENT = 4;
+	constexpr uint8_t RTC = 3;
+	constexpr uint8_t GPS_RTC = 2;
+	constexpr uint8_t CELLULAR = 1;
+	constexpr uint8_t GPS = 0; 
+	constexpr uint8_t NONE = 5;
 }
 
 namespace IndicatorLight {
@@ -146,7 +148,7 @@ struct dateTimeStruct {
 class Kestrel: public Sensor
 {
     constexpr static int MAX_NUM_ERRORS = 10; ///<Maximum number of errors to log before overwriting previous errors in buffer
-	const String FIRMWARE_VERSION = "1.2.1"; //FIX! Read from system??
+	const String FIRMWARE_VERSION = "1.3.0"; //FIX! Read from system??
 	
     const uint32_t KESTREL_PORT_RANGE_FAIL = 0x90010300; ///<Kestrel port assignment is out of range
 	const uint32_t CSA_INIT_FAIL = 0x100500F0; ///<Failure to initialize CSA Alpha or CSA Beta
@@ -188,7 +190,7 @@ class Kestrel: public Sensor
 		bool sdInserted();
 		bool enableAuxPower(bool state);
 		time_t getTime();
-		uint8_t syncTime();
+		uint8_t syncTime(bool force = false);
 		bool startTimer(time_t period = 0); //Default to 0, if 0, use default timer period
 		bool waitUntilTimerDone();
 		// time_t getTime();
@@ -207,6 +209,7 @@ class Kestrel: public Sensor
 		// static constexpr uint16_t 
 		
 		dateTimeStruct currentDateTime = {2049, 6, 16, 3, 27, 31, TimeSource::NONE}; //Initialize with dummy time //DEBUG!
+		uint8_t timeFix = 0; ///<Keep track of the quality of time fix 
 		bool statLED(bool state);
 		bool setIndicatorState(uint8_t ledBank, uint8_t mode);
 		uint8_t updateTime();
@@ -253,8 +256,15 @@ class Kestrel: public Sensor
 		time_t timegm(struct tm *tm); //Portable implementation
 		time_t maxTimeError = 30; //Max time error allowed between clock sources [seconds]
 		bool timeGood = false; ///<Keep track of the legitimacy of the time based on the last sync attempt
-		uint8_t timeSource = 0; ///<Keep track of where the time is coming from
-		time_t timeSyncVals[3] = {0}; ///<Keep track of what the values of each device where the last time syncTime was called
+		const uint8_t numClockSources = 6; 
+    	bool sourceRequested[6] = {true, true, true, true, true, true}; ///<Keep track of which clock sources were asked for at each interval
+		bool sourceAvailable[6] = {false, false, false, false, false, false}; ///<Keep track of which sources are available for testing against
+    	String sourceNames[6] = {"GPS","CELL","GPS_RTC","RTC","INC","LOCAL"}; 
+		time_t times[6] = {0}; ///<Actual time storage from last time check: gpsSatTime, cellTime, gpsTime, rtcTime, incrementTime, particleTime  
+		int8_t timeSourceA = 5;
+		int8_t timeSourceB = 5;
+		// uint8_t timeSource = 0; ///<Keep track of where the time is coming from
+		// time_t timeSyncVals[3] = {0}; ///<Keep track of what the values of each device where the last time syncTime was called
 		time_t lastTimeSync = 0; ///<Keep track of when the last time sync occoured 
 		long latitude = 0; ///<Used to keep track of the last pos measurment 
 		long longitude = 0; ///<Used to keep track of the last pos measurment 
