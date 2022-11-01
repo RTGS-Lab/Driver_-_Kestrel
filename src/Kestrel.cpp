@@ -108,13 +108,13 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
         enablePower(i, false); //Default all power to off
         enableData(i, false); //Default all data to off
     }
-    
+    initDone = true;
     syncTime(true); //Force a time sync on startup 
     // Particle.syncTime(); //DEBUG!
     // ioOB.pinMode(PinsOB::)
     enableI2C_Global(globState); //Return to previous state
     enableI2C_OB(obState);
-    initDone = true;
+   
     return ""; //DEBUG!
 }
 
@@ -163,7 +163,7 @@ String Kestrel::getMetadata()
     //IDs of onboard sensors (if any have them)
         //SHT40
     //
-
+    unsigned long metadataStart = millis();
     bool auxState = enableAuxPower(true); //Turn on AUX power for GPS
     bool globState = enableI2C_Global(false); //Turn off external I2C
     bool obState = enableI2C_OB(true); //Turn on internal I2C
@@ -201,15 +201,17 @@ String Kestrel::getMetadata()
 	metadata = metadata + "\"Firmware\":\"v" + FIRMWARE_VERSION + "\","; //Report firmware version as modded BCD
 	metadata = metadata + "\"Pos\":[15]"; //Concatonate position 
 	metadata = metadata + "}"; //CLOSE  
+    if((millis() - metadataStart) > loggerCollectMax) throwError(EXCEED_COLLECT_TIME | 0x300 | portErrorCode); //Throw error for metadata taking too long
     enableAuxPower(auxState); //Return to previous state
     enableI2C_Global(globState); 
     enableI2C_OB(obState);
 	return metadata; 
-	return ""; //DEBUG!
+	// return ""; //DEBUG!
 }
 
 String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 {
+    unsigned long diagnosticStart = millis(); //Keep track of when the test starts  
     bool globState = enableI2C_Global(false); //Turn off external I2C
     bool obState = enableI2C_OB(true); //Turn on internal I2C
 	String output = "\"Kestrel\":{";
@@ -473,6 +475,7 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
         }
         output = output + "],"; //Close array
 	}
+    if((millis() - diagnosticStart) > loggerCollectMax) throwError(EXCEED_COLLECT_TIME | 0x200 | portErrorCode); //Throw error for diagnostic taking too long
     enableI2C_Global(globState); //Return to previous state
     enableI2C_OB(obState);
 	return output + "\"Pos\":[15]}"; //Write position in logical form - Return compleated closed output
@@ -779,10 +782,14 @@ uint8_t Kestrel::syncTime(bool force)
     
     /////////// CELL TIME //////////////////
     sourceRequested[TimeSource::CELLULAR] = true;
-    if(Particle.connected()) {
+    if(Particle.connected()) { //Only enter if there is not already a sync pending 
         timeSyncRequested = true;
         Particle.syncTime();
-        waitFor(Particle.syncTimeDone, 5000); //Wait until sync is done, at most 5 seconds //FIX!
+        // waitFor(Particle.syncTimePending, 500); //Wait up to 0.5 seconds for system to assert a syncTime
+        // waitFor(Particle.syncTimeDone, 10000); //Wait until sync is done, at most 10 seconds //FIX!
+        // unsigned long localTime = millis();
+        // while(Particle.syncTimePending() && (millis() - localTime) < 10000) Particle.process(); //Process command while waiting for sync to finish or timeout 
+        waitFor(Particle.syncTimePending, 10000); //Wait until sync is done, at most 10 seconds
         if(Particle.syncTimeDone()) { //Make sure sync time was actually completed 
             Time.zone(0); //Set to UTC 
             cellTime = Time.now();
@@ -797,7 +804,7 @@ uint8_t Kestrel::syncTime(bool force)
             times[TimeSource::CELLULAR] = 0;
             throwError(CLOCK_UNAVAILABLE | 0x06); //OR with Cell indicator 
         }
-        timeSyncRequested = false; //Release control of time sync override 
+        // timeSyncRequested = false; //Release control of time sync override 
         
     }
     else {
@@ -807,9 +814,10 @@ uint8_t Kestrel::syncTime(bool force)
     }
 
     ////////// GPS TIME ///////////////////
-    bool currentAux = enableAuxPower(true);
-    bool currentGlob = enableI2C_Global(false);
-    bool currentOB = enableI2C_OB(true);
+    uint8_t customPayload[MAX_PAYLOAD_SIZE]; // This array holds the payload data bytes. MAX_PAYLOAD_SIZE defaults to 256. The CFG_RATE payload is only 6 bytes!
+    // bool currentAux = enableAuxPower(true);
+    // bool currentGlob = enableI2C_Global(false);
+    // bool currentOB = enableI2C_OB(true);
     //Perform wakeup in case switched off already
     Serial.println("Wake GPS"); //DEBUG!
     ioOB.pinMode(PinsOB::GPS_INT, OUTPUT); //Turn GPS back on by toggling int pin
@@ -819,20 +827,22 @@ uint8_t Kestrel::syncTime(bool force)
     delay(1000);
     ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
     delay(1000);
+    // gps.begin();
     if(gps.begin() == false) {
         throwError(GPS_INIT_FAIL); //DEBUG!
         criticalFault = true; //Set critical fault since we can't init GPS
-        timeSyncVals[1] = 0; //Clear if not updated
+        // timeSyncVals[1] = 0; //Clear if not updated
         throwError(CLOCK_UNAVAILABLE | 0x08); //OR with GPS indicator 
         Serial.println("GPS FAIL"); //DEBUG!
     }
+    // if(false); //DEBUG!
     else {
     
     // if(gps.begin() == false) throwError(GPS_INIT_FAIL);
     // else {
         sourceRequested[TimeSource::GPS] = true;
         gps.setI2COutput(COM_TYPE_UBX); //Set the I2C port to output UBX only (turn off NMEA noise)
-        uint8_t customPayload[MAX_PAYLOAD_SIZE]; // This array holds the payload data bytes. MAX_PAYLOAD_SIZE defaults to 256. The CFG_RATE payload is only 6 bytes!
+        
         gps.setPacketCfgPayloadSize(MAX_PAYLOAD_SIZE);
         ubxPacket customCfg = {0, 0, 0, 0, 0, customPayload, 0, 0, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED};
         customCfg.cls = UBX_CLASS_NAV; // This is the message Class
@@ -864,10 +874,12 @@ uint8_t Kestrel::syncTime(bool force)
             // gpsTime = 0xDEADBEEF; //DEBUG!
             Serial.print("GPS Time: ");
             Serial.println(gpsTime); //DEBUG!
-            timeSyncVals[1] = gpsTime; //Grab last time
+            // timeSyncVals[1] = gpsTime; //Grab last time
+            times[TimeSource::GPS_RTC] = gpsTime;
+            sourceAvailable[TimeSource::GPS_RTC] = true;
         }
         else {
-            timeSyncVals[1] = 0; //Clear if not updated
+            // timeSyncVals[1] = 0; //Clear if not updated
             throwError(CLOCK_UNAVAILABLE | 0x08); //OR with GPS indicator 
         }
         // Serial.print("GPS Leap Seconds: "); //DEBUG!
@@ -909,7 +921,7 @@ uint8_t Kestrel::syncTime(bool force)
     }
     else {
         sourceAvailable[TimeSource::GPS] = false;
-        sourceAvailable[TimeSource::GPS_RTC] = true;
+        sourceAvailable[TimeSource::GPS_RTC] = false;
         times[TimeSource::GPS]  = 0; //Clear if not updated
         times[TimeSource::GPS_RTC]  = 0;
         throwError(CLOCK_UNAVAILABLE | 0x08); //OR with GPS indicator 
@@ -948,6 +960,7 @@ uint8_t Kestrel::syncTime(bool force)
             for(int t = 0; t < (numClockSources - 1); t++) {
                 if(abs(times[remoteSource] - times[t]) < maxTimeError && t != remoteSource) { //If available time matches with another time (2 times agree) that is not iself, proceed with the time set
                     timeSourceB = t; //Record secondary source
+                    Serial.println("SET PARTICLE RTC"); //DEBUG!
                     Time.setTime(times[remoteSource]);  //Set 
                     rtc.setTime(Time.year(times[remoteSource]), Time.month(times[remoteSource]), Time.day(times[remoteSource]), Time.hour(times[remoteSource]), Time.minute(times[remoteSource]), Time.second(times[remoteSource]));
                     timeGood = true; //Assert flag after time set
@@ -956,6 +969,7 @@ uint8_t Kestrel::syncTime(bool force)
             }
             if(!timeGood) { //If no matching time found, set to none and set time anyway
                 timeSourceB = TimeSource::NONE; //Set even if find no agreeing time
+                Serial.println("SET PARTICLE RTC"); //DEBUG!
                 Time.setTime(times[remoteSource]);  //Set
                 rtc.setTime(Time.year(times[remoteSource]), Time.month(times[remoteSource]), Time.day(times[remoteSource]), Time.hour(times[remoteSource]), Time.minute(times[remoteSource]), Time.second(times[remoteSource]));
             }
@@ -968,6 +982,7 @@ uint8_t Kestrel::syncTime(bool force)
                     for(int t = 0; t < (numClockSources - 1); t++) {
                         if(abs(times[i] - times[t]) < maxTimeError && t != i) { //If available time matches with another time (2 times agree) that is not iself, proceed with the time set
                             timeSourceB = t; //Record secondary source
+                            Serial.println("SET PARTICLE RTC"); //DEBUG!
                             Time.setTime(times[i]);  //Set 
                             if(timeSourceA <= TimeSource::CELLULAR) { //If a tier 1 or 2 value is used, also update the kestrel RTC
                                 rtc.setTime(Time.year(times[i]), Time.month(times[i]), Time.day(times[i]), Time.hour(times[i]), Time.minute(times[i]), Time.second(times[i]));
@@ -1449,6 +1464,7 @@ bool Kestrel::configTalonSense()
 
 int Kestrel::sleep()
 {
+    if((millis() - timerStart) > sysCollectMax) throwError(EXCEED_COLLECT_TIME | portErrorCode); //Throw error for whole logging system taking too long
     SystemSleepConfiguration config;
     // SystemSleepResult result;
     switch(powerSaveMode) {
@@ -1571,12 +1587,19 @@ void Kestrel::timechange_handler(system_event_t event, int param)
     // Serial.print("\t");
     // Serial.println(param); //DEBUG!
     if(event == time_changed) { //Confirm event type before proceeding 
-        if(param == time_changed_sync && !(selfPointer->timeSyncRequested)) { 
-            // Serial.println("TIME CHANGE: Auto"); //DEBUG!
+        if(param == time_changed_sync && !(selfPointer->initDone)) { 
+            Serial.println("TIME CHANGE: Updating"); //DEBUG!
+            // selfPointer->syncTime(); //if time update not from manual sync (and sync not requested), call time sync to return to desired val
+        }
+        if(param == time_changed_sync && !(selfPointer->timeSyncRequested) && (selfPointer->initDone)) { 
+            Serial.println("TIME CHANGE: Auto"); //DEBUG!
             selfPointer->syncTime(); //if time update not from manual sync (and sync not requested), call time sync to return to desired val
         }
-        // if(param == time_changed_sync && selfPointer->timeSyncRequested) Serial.println("TIME CHANGE: Requested"); //DEBUG!
-        // if(param == time_changed_manually) Serial.println("TIME CHANGE: Manual"); //DEBUG!
+        if(param == time_changed_sync && selfPointer->timeSyncRequested) {
+            Serial.println("TIME CHANGE: Requested"); //DEBUG!
+            selfPointer->timeSyncRequested = false; //Clear flag
+        }
+        if(param == time_changed_manually) Serial.println("TIME CHANGE: Manual"); //DEBUG!
     }
 }
 

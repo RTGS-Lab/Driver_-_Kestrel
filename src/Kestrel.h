@@ -149,7 +149,7 @@ struct dateTimeStruct {
 class Kestrel: public Sensor
 {
     constexpr static int MAX_NUM_ERRORS = 10; ///<Maximum number of errors to log before overwriting previous errors in buffer
-	const String FIRMWARE_VERSION = "1.3.0"; //FIX! Read from system??
+	const String FIRMWARE_VERSION = "1.4.0"; //FIX! Read from system??
 	
     const uint32_t KESTREL_PORT_RANGE_FAIL = 0x90010300; ///<Kestrel port assignment is out of range
 	const uint32_t CSA_INIT_FAIL = 0x100500F0; ///<Failure to initialize CSA Alpha or CSA Beta
@@ -245,6 +245,8 @@ class Kestrel: public Sensor
 		const int ledBrightness = 75; //Default to 75% on
 		const int ledPeriod = 500; //Default to 500ms period
 		const int ledOnTime = 250; //Default to 50% duty cycle
+		const unsigned long sysCollectMax = 300000; //Allow for a max of 5 minutes for collecting info from system
+		const unsigned long loggerCollectMax = 30000; //Allow for a max of 30 seconds for collecting info from logger itself (1 = data, 2 = diagnostic, 3 = metadata)
         // uint32_t errors[MAX_NUM_ERRORS] = {0};
         // uint8_t numErrors = 0; //Used to track the index of errors array
         // bool errorOverwrite = false; //Used to track if errors have been overwritten in time since last report
