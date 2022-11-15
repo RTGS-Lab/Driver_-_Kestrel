@@ -95,6 +95,21 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
         Serial.print("\t");
         Serial.println(gps.getATTheading());
     }
+    /// AUTO ZERO ACCEL
+    int accelInitError = accel.begin();
+    if(accelInitError == 0) { //If accel read is good
+        int accelError = accel.updateAccelAll(); //Get updated values
+        if(accelError != 0) {
+            throwError(ACCEL_DATA_FAIL | (accelError << 8)); //Throw error for failure to communicate with accel, OR error code
+            //FIX! Null outputs??
+        }
+        if(abs(accel.data[0]) < 0.04366 && abs(accel.data[1]) < 0.04366 ) zeroAccel(); //If x and y are < +/- 2.5 degrees, zero the accelerometer Z axis
+        // output = output + "\"ACCEL\":[" + String(accel.data[0]) + "," + String(accel.data[1]) + "," + String(accel.data[2]) + "],"; 
+    }
+    else {
+        throwError(ACCEL_DATA_FAIL | (accelInitError << 8)); //Throw error for failure to communicate with accel, OR error code 
+        // output = output + "\"ACCEL\":[null],";
+    }
     //Read in accel offset from EEPROM. Do this here so it is only done once per reset cycle and is immediately available 
     for(int i = 0; i < 3; i++) { 
         float temp = 0;
@@ -1439,7 +1454,9 @@ bool Kestrel::zeroAccel(bool reset)
             // accel.offset[1] = -accel.getAccel(1); //Null each axis
             accel.offset[0] = 0; //Null each axis
             accel.offset[1] = 0; //Null each axis
-            accel.offset[2] = 1 - accel.getAccel(2); //Set z to 1 
+            float zVal = accel.getAccel(2);
+            if(zVal > 0) accel.offset[2] = 1 - accel.getAccel(2); //Set z to 1 
+            else if(zVal < 0) accel.offset[2] = accel.getAccel(2) + 1; //Set for negative offset
         }
         else {
             accel.offset[0] = 0;
