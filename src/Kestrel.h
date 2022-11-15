@@ -149,7 +149,7 @@ struct dateTimeStruct {
 class Kestrel: public Sensor
 {
     constexpr static int MAX_NUM_ERRORS = 10; ///<Maximum number of errors to log before overwriting previous errors in buffer
-	const String FIRMWARE_VERSION = "1.4.0"; //FIX! Read from system??
+	const String FIRMWARE_VERSION = "1.5.0"; //FIX! Read from system??
 	
     const uint32_t KESTREL_PORT_RANGE_FAIL = 0x90010300; ///<Kestrel port assignment is out of range
 	const uint32_t CSA_INIT_FAIL = 0x100500F0; ///<Failure to initialize CSA Alpha or CSA Beta
@@ -160,7 +160,7 @@ class Kestrel: public Sensor
     const uint32_t CLOUD_FAIL = 0xF00800F6; ///<Failure to connect to particle cloud
 	const uint32_t SYSTEM_RESET = 0xF00A0000; ///<Reported on first init, along with reason for reset
 	const uint32_t CLOCK_MISMATCH = 0x700100F0; ///<Mismatch between consensus time and one of the sources 
-	const uint32_t CLOCK_NO_SYNC = 0x500103F0; ///<No two clock sources agree, unable to provide synced time
+	const uint32_t CLOCK_NO_SYNC = 0x500300F0; ///<No two clock sources agree, unable to provide synced time
 	const uint32_t CLOCK_UNAVAILABLE = 0x500400F0; ///<One of the system clocks is unavailable to read from 
 	const uint32_t RTC_OSC_FAIL = 0x500500F5; ///<Failure of local RTC to increment 
 	const uint32_t RTC_POWER_LOSS = 0x54B200F5; ///<Local RTC has encountered power failure 
@@ -173,6 +173,7 @@ class Kestrel: public Sensor
 	const uint32_t ACCEL_INIT_FAIL = 0x100C00F7; ///<Failed to initialize onboard accelerometer 
 	const uint32_t ACCEL_DATA_FAIL = 0x100D00F7; ///<Failed to read data from onboard accelerometer
 	const uint32_t ALARM_FAIL = 0x500600F5; ///<RTC alarm failed to wake device 
+	const uint32_t TIME_DISAGREE = 0x70030000; ///<At least one time source disagrees with the others
 
 	const time_t CELL_TIMEOUT = 300000; ///<Amount of time [ms] to wait while trying to connect to cell
     public:

@@ -751,13 +751,15 @@ uint8_t Kestrel::syncTime(bool force)
     time_t cellTime = 0;
     time_t rtcTime = 0;
     
-    static time_t previousTime = Time.now(); //Init to current time to throw warnings on startup, etc
-    static unsigned long previousMillis = millis(); //Init to current time to throw warnings on startup, etc
+    static time_t previousTime = 0; //Init to current time to throw warnings on startup, etc
+    static unsigned long previousMillis = 0; //Init to current time to throw warnings on startup, etc
     
     
     //Grab Particle RTC time and expected time from millis delta
-    time_t particleTime = Time.now();
+    time_t particleTime = Time.isValid() ? Time.now() : 0; //Set to current time if valid, if not, set to 0
     times[numClockSources - 1] = particleTime; //Grab current particle RTC time
+
+    if(particleTime == 0) throwError(CLOCK_UNAVAILABLE); //If time is not valid, throw system wide error for base clock
     
     
     Serial.print("Timebase Start: "); //DEBUG!
@@ -781,6 +783,13 @@ uint8_t Kestrel::syncTime(bool force)
         sourceAvailable[TimeSource::RTC] = true;
         times[TimeSource::RTC] = rtcTime; //Grab last time
     }
+    /////////// INCREMENT TIME ///////////////////
+    unsigned long deltaTime = millis() - previousMillis; //Calculate delta time since last call
+    deltaTime = deltaTime/1000; //Convert to seconds - Do this as seperate process to make sure rollover math works correclty 
+    sourceRequested[TimeSource::INCREMENT] = true; 
+    if(previousTime == 0 || previousMillis == 0) sourceAvailable[TimeSource::INCREMENT] = false; //If set for the first time or not incremented, ignore
+    else sourceAvailable[TimeSource::INCREMENT] = true;
+    times[TimeSource::INCREMENT] = previousTime + deltaTime; //The expected time is the delta added to the last time recorded 
     
     /////////// CELL TIME //////////////////
     sourceRequested[TimeSource::CELLULAR] = true;
@@ -791,7 +800,9 @@ uint8_t Kestrel::syncTime(bool force)
         // waitFor(Particle.syncTimeDone, 10000); //Wait until sync is done, at most 10 seconds //FIX!
         // unsigned long localTime = millis();
         // while(Particle.syncTimePending() && (millis() - localTime) < 10000) Particle.process(); //Process command while waiting for sync to finish or timeout 
-        waitFor(Particle.syncTimePending, 10000); //Wait until sync is done, at most 10 seconds
+        // waitFor(Particle.syncTimePending, 10000); //Wait until sync is done, at most 10 seconds
+        waitFor(Particle.syncTimePending, 500); //Wait up to 0.5 seconds for system to assert a syncTime
+        waitFor(Particle.syncTimeDone, 10000); //Wait until sync is done, at most 10 seconds //FIX!
         if(Particle.syncTimeDone()) { //Make sure sync time was actually completed 
             Time.zone(0); //Set to UTC 
             cellTime = Time.now();
@@ -804,7 +815,7 @@ uint8_t Kestrel::syncTime(bool force)
         else {
             sourceAvailable[TimeSource::CELLULAR] = false;
             times[TimeSource::CELLULAR] = 0;
-            throwError(CLOCK_UNAVAILABLE | 0x06); //OR with Cell indicator 
+            throwError(CLOCK_UNAVAILABLE | 0x106); //OR with Cell indicator 
         }
         // timeSyncRequested = false; //Release control of time sync override 
         
@@ -831,9 +842,10 @@ uint8_t Kestrel::syncTime(bool force)
     delay(1000);
     // gps.begin();
     if(gps.begin() == false) {
-        throwError(GPS_INIT_FAIL); //DEBUG!
+        // throwError(GPS_INIT_FAIL); //DEBUG!
         criticalFault = true; //Set critical fault since we can't init GPS
         // timeSyncVals[1] = 0; //Clear if not updated
+        throwError(GPS_INIT_FAIL); //Report failure to connect with GPS AND that GPS clock is not available 
         throwError(CLOCK_UNAVAILABLE | 0x08); //OR with GPS indicator 
         Serial.println("GPS FAIL"); //DEBUG!
     }
@@ -862,28 +874,28 @@ uint8_t Kestrel::syncTime(bool force)
         Serial.print("GPS UTC Validity: "); //DEBUG!
         Serial.println(customPayload[19], HEX);
 
-        if((customPayload[19] & 0x0F) == 0x07) { //Check if all times are valid
-            // struct tm timeinfo = {0}; //Create struct in C++ time land
+        // if((customPayload[19] & 0x0F) == 0x07) { //Check if all times are valid
+        //     // struct tm timeinfo = {0}; //Create struct in C++ time land
 
-            // timeinfo.tm_year = (customPayload[12] | (customPayload[13] << 8)) - 1900; //Years since 1900
-            // timeinfo.tm_mon = customPayload[14] - 1; //Months since january
-            // timeinfo.tm_mday = customPayload[15];
-            // timeinfo.tm_hour = customPayload[16];
-            // timeinfo.tm_min = customPayload[17];
-            // timeinfo.tm_sec = customPayload[18];
-            // gpsTime = timegm(&timeinfo); //Convert struct to unix time
-            gpsTime = cstToUnix((customPayload[12] | (customPayload[13] << 8)), customPayload[14], customPayload[15], customPayload[16], customPayload[17], customPayload[18]); //Convert current time to Unix time
-            // gpsTime = 0xDEADBEEF; //DEBUG!
-            Serial.print("GPS Time: ");
-            Serial.println(gpsTime); //DEBUG!
-            // timeSyncVals[1] = gpsTime; //Grab last time
-            times[TimeSource::GPS_RTC] = gpsTime;
-            sourceAvailable[TimeSource::GPS_RTC] = true;
-        }
-        else {
-            // timeSyncVals[1] = 0; //Clear if not updated
-            throwError(CLOCK_UNAVAILABLE | 0x08); //OR with GPS indicator 
-        }
+        //     // timeinfo.tm_year = (customPayload[12] | (customPayload[13] << 8)) - 1900; //Years since 1900
+        //     // timeinfo.tm_mon = customPayload[14] - 1; //Months since january
+        //     // timeinfo.tm_mday = customPayload[15];
+        //     // timeinfo.tm_hour = customPayload[16];
+        //     // timeinfo.tm_min = customPayload[17];
+        //     // timeinfo.tm_sec = customPayload[18];
+        //     // gpsTime = timegm(&timeinfo); //Convert struct to unix time
+        //     gpsTime = cstToUnix((customPayload[12] | (customPayload[13] << 8)), customPayload[14], customPayload[15], customPayload[16], customPayload[17], customPayload[18]); //Convert current time to Unix time
+        //     // gpsTime = 0xDEADBEEF; //DEBUG!
+        //     Serial.print("GPS Time: ");
+        //     Serial.println(gpsTime); //DEBUG!
+        //     // timeSyncVals[1] = gpsTime; //Grab last time
+        //     times[TimeSource::GPS_RTC] = gpsTime;
+        //     sourceAvailable[TimeSource::GPS_RTC] = true;
+        // }
+        // else {
+        //     // timeSyncVals[1] = 0; //Clear if not updated
+        //     throwError(CLOCK_UNAVAILABLE | 0x08 | (customPayload[19] << 8)); //OR with GPS indicator, OR with validity payload 
+        // }
         // Serial.print("GPS Leap Seconds: "); //DEBUG!
         // Serial.println(customPayload[9]);
         
@@ -895,7 +907,9 @@ uint8_t Kestrel::syncTime(bool force)
         // Serial.println(gps.getSecond());
     }
     // if(gps.getDateValid() && gps.getTimeValid() && gps.getTimeFullyResolved()) {
-    if((customPayload[19] & 0x0F) == 0x07 && (gps.getFixType() >= 2 && gps.getFixType() <= 4 && gps.getGnssFixOk())) { //Check if all times are valid AND fix is valid
+    uint8_t fixType = gps.getFixType();
+    bool gnssFix = gps.getGnssFixOk();
+    if((customPayload[19] & 0x0F) == 0x07 && (fixType >= 2 && fixType <= 4 && gnssFix)) { //Check if all times are valid AND fix is valid
         // struct tm timeinfo = {0}; //Create struct in C++ time land
 
         // timeinfo.tm_year = (customPayload[12] | (customPayload[13] << 8)) - 1900; //Years since 1900
@@ -913,7 +927,7 @@ uint8_t Kestrel::syncTime(bool force)
         times[TimeSource::GPS] = gpsTime; //Grab last time
         times[TimeSource::GPS_RTC] = gpsTime; //Grab last time
     }
-    else if((customPayload[19] & 0x0F) == 0x07 && !(gps.getFixType() >= 2 && gps.getFixType() <= 4 && gps.getGnssFixOk())) { //RTC is good, but not active fix
+    else if((customPayload[19] & 0x0F) == 0x07 && !(fixType >= 2 && fixType <= 4 && gnssFix)) { //RTC is good, but not active fix
         gpsTime = cstToUnix((customPayload[12] | (customPayload[13] << 8)), customPayload[14], customPayload[15], customPayload[16], customPayload[17], customPayload[18]); //Convert current time to Unix time
         Serial.print("GPS RTC Time: ");
         Serial.println(gpsTime); //DEBUG!
@@ -926,34 +940,36 @@ uint8_t Kestrel::syncTime(bool force)
         sourceAvailable[TimeSource::GPS_RTC] = false;
         times[TimeSource::GPS]  = 0; //Clear if not updated
         times[TimeSource::GPS_RTC]  = 0;
-        throwError(CLOCK_UNAVAILABLE | 0x08); //OR with GPS indicator 
+        throwError(CLOCK_UNAVAILABLE | 0x08 | (customPayload[19] << 8)); //OR with GPS indicator, OR with validity payload 
     }
 
     ////////////////////////////////// TEST VALIDITY OF CURRENT TIME ////////////////////////////////////////////
     for(int i = 0; i < numClockSources; i++) {
         if(sourceAvailable[i] == true && abs(particleTime - times[i]) > maxTimeError) {
-            //THROW ERROR!
+            throwError(TIME_DISAGREE);
             timeGood = false; //Clear flag if any of the available times disagree with the current time
         }
     }
 
     /////////////////////////// EVALUATE TIME FIX FROM TIME SET ////////////////////////////////
+    uint8_t newTimeFix = 0;
     if(timeGood) { //Only do if time is alredy valid
-        if(sourceAvailable[TimeSource::GPS] == true && sourceAvailable[TimeSource::CELLULAR] == true) timeFix = 4; //If both remote time sources are present, best fix
-        else if(sourceAvailable[TimeSource::GPS] == true || sourceAvailable[TimeSource::CELLULAR] == true) timeFix = 3; //If only ONE of the remote sources is present, level 3 fix
-        else if(sourceAvailable[TimeSource::GPS_RTC] == true || sourceAvailable[TimeSource::RTC] == true) timeFix = 2; //If only local source present, level 2 fix
-        else if(sourceAvailable[TimeSource::INCREMENT] == true) timeFix = 1; //If only delta time agrees, level 1 fix
+        if(sourceAvailable[TimeSource::GPS] == true && sourceAvailable[TimeSource::CELLULAR] == true) newTimeFix = 4; //If both remote time sources are present, best fix
+        else if(sourceAvailable[TimeSource::GPS] == true || sourceAvailable[TimeSource::CELLULAR] == true) newTimeFix = 3; //If only ONE of the remote sources is present, level 3 fix
+        else if(sourceAvailable[TimeSource::GPS_RTC] == true || sourceAvailable[TimeSource::RTC] == true) newTimeFix = 2; //If only local source present, level 2 fix
+        else if(sourceAvailable[TimeSource::INCREMENT] == true) newTimeFix = 1; //If only delta time agrees, level 1 fix
         else {
-            timeFix = 0; //If not even delta time agrees, there is no fix
-            criticalFault = true;
-            throwError(CLOCK_NO_SYNC); //Report lack of sync as error 
+            newTimeFix = 0; //If not even delta time agrees, there is no fix
+            if(initDone) criticalFault = true; //Allow local only without resetting device only during init period 
+            throwError(CLOCK_NO_SYNC | 0x100); //Report lack of sync as error 
         }
     }
 
 
     //////////////////////////// SET TIME ////////////////////////////
     uint8_t source = 0; 
-    if(timeGood == false || force == true) { //If there is an error in time, go to set time
+    if(timeGood == false || force == true || newTimeFix > timeFix) { //If there is an error in time, go to set time, or if the new time availability is better than the last sync time 
+        timeGood = false; //Clear flag once the timeset begins 
         // int8_t sourceA = TimeSource::NONE; //Keep track of which sources are used
         // int8_t sourceB = TimeSource::NONE;
         if(sourceAvailable[TimeSource::GPS] ^ sourceAvailable[TimeSource::CELLULAR]) { //If only ONE of the external sources is avilible 
@@ -1003,17 +1019,10 @@ uint8_t Kestrel::syncTime(bool force)
         else if(timeSourceA == TimeSource::INCREMENT) timeFix = 1; //If only delta time agrees, level 1 fix
         else {
             timeFix = 0; //If not even delta time agrees, there is no fix
-            criticalFault = true;
+            if(initDone) criticalFault = true; //Allow local only without resetting device only during init period 
             throwError(CLOCK_NO_SYNC); //Report lack of sync as error 
         }
-        if(timeFix > 0 && timeGood == true) {
-            unsigned long deltaTime = millis() - previousMillis; //Calculate delta time since last call
-            deltaTime = deltaTime/1000; //Convert to seconds - Do this as seperate process to make sure rollover math works correclty 
-            sourceRequested[TimeSource::INCREMENT] = true; 
-            if(previousTime == Time.now() || Time.isValid() == false || deltaTime == 0) sourceAvailable[TimeSource::INCREMENT] = false; //If set for the first time or not incremented, ignore
-            else sourceAvailable[TimeSource::INCREMENT] = true;
-            times[TimeSource::INCREMENT] = previousTime + deltaTime; //The expected time is the delta added to the last time recorded 
-
+        if(timeFix > 0 && timeGood == true) { //Update for increment
             lastTimeSync = Time.now(); //Update time of last sync
             previousTime = Time.now(); //Grab updated time before exiting
             previousMillis = millis(); //Grab millis before exiting
@@ -1482,12 +1491,13 @@ int Kestrel::sleep()
                 .gpio(Pins::Clock_INT, FALLING); //Trigger on falling clock pulse
             // enableSD(false); //Turn off SD power
             ioOB.digitalWrite(PinsOB::LED_EN, HIGH); //Disable LEDs (if not done already) 
-            gps.powerOffWithInterrupt(3600000, VAL_RXM_PMREQ_WAKEUPSOURCE_EXTINT0); //Shutdown for an hour unless woken up via pin trip
+            if(!gps.powerOffWithInterrupt(3600000, VAL_RXM_PMREQ_WAKEUPSOURCE_EXTINT0)) throwError(GPS_READ_FAIL); //Shutdown for an hour unless woken up via pin trip
 
             // result = System.sleep(config);
             // System.sleep(config); //DEBUG!
             break;
         case PowerSaveModes::LOW_POWER:
+            Particle.disconnect(CloudDisconnectOptions().graceful(true).timeout(30s)); //Disconnect from cloud and make sure messages are sent first
             config.mode(SystemSleepMode::ULTRA_LOW_POWER) //Configure sleep mode
                 // .network(NETWORK_INTERFACE_CELLULAR) //Keep network alive
                 // .flag(SystemSleepFlag::WAIT_CLOUD) //Wait for cloud communications to finish before going to sleep
@@ -1565,6 +1575,29 @@ int Kestrel::wake()
                     // gps.setAutoPVT(true); //DEBUG!
                     unsigned long localTime = millis();
                     while((gps.getFixType() < 2 || gps.getFixType() > 4) && !gps.getGnssFixOk() && (localTime - millis()) < 30000); //Wait up to 30 seconds to get a GPS fix, if not, move on
+                    if(!(gps.getFixType() >= 2 && gps.getFixType() <= 4)) { //If GPS failed to connect after that period, throw error
+                        throwError(GPS_TIMEOUT);
+                    }
+                    updateGPS = true; //Set flag so position is updated at next update call
+                }
+            }
+            enableSD(true); //Turn SD back on
+            updateTime(); //Grab updated time each wakeup
+            break;
+        case PowerSaveModes::LOW_POWER:
+            enableAuxPower(true); //Turn aux power back on
+            if((getTime() - posTime) > 14400) { //If it has been more than 4 hours since last GPS point reading
+                Serial.println("Power Up GPS"); //DEBUG!
+                if(gps.begin() == false) {
+                    criticalFault = true; //DEBUG! ??
+                    throwError(GPS_INIT_FAIL);
+                    Serial.println("GPS ERROR");
+                }
+                else {
+                    gps.setI2COutput(COM_TYPE_UBX);
+                    // gps.setAutoPVT(true); //DEBUG!
+                    unsigned long localTime = millis();
+                    while((gps.getFixType() < 2 || gps.getFixType() > 4) && !gps.getGnssFixOk() && (localTime - millis()) < 60000); //Wait up to 60 seconds to get a GPS fix, if not, move on
                     if(!(gps.getFixType() >= 2 && gps.getFixType() <= 4)) { //If GPS failed to connect after that period, throw error
                         throwError(GPS_TIMEOUT);
                     }
