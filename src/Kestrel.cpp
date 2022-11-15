@@ -228,8 +228,9 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
         output = output + "\"Accel_Offset\":[" + String(accel.offset[0]) + "," + String(accel.offset[1]) + "," + String(accel.offset[2]) + "],"; 
         uint8_t rtcConfigA = (rtc.readByte(0) & 0x80); //Read in ST bit
         rtcConfigA = rtcConfigA | ((rtc.readByte(3) & 0x38) << 1); //Read in OSCRUN, PWRFAIL, VBATEN bits
-        uint8_t rtcConfigB = rtc.readByte(8); //Read in control byte
-        output = output + "\"RTC_Config\":[" + String(rtcConfigA) + "," + String(rtcConfigB) + "],"; //Concatonate to output
+        uint8_t rtcConfigB = rtc.readByte(7); //Read in control byte
+        uint8_t rtcConfigC = rtc.readByte(8); //Read in trim byte
+        output = output + "\"RTC_Config\":[" + String(rtcConfigA) + "," + String(rtcConfigB) + "," + String(rtcConfigC) + "],"; //Concatonate to output
 	}
 
 	if(diagnosticLevel <= 3) {
@@ -440,6 +441,7 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
         }
         else if(System.freeMemory() < 46800) throwError(RAM_LOW); //Throw error if RAM usage >75% //FIX! Check dynamically for amount of RAM available based on OS, etc 
         output = output + "\"Free Mem\":" + String(System.freeMemory()) + ","; //DEBUG! Move to higher level later on
+        output = output + "\"Time Fix\":" + String(timeFix) + ","; //Append time sync value
         output = output + "\"Time Source\":[\"" + sourceNames[timeSourceA] + "\",\"" + sourceNames[timeSourceB] + "\"],"; //Report the time souce selected from the last sync
         output = output + "\"Times\":{\"LOCAL\":" + String((int)times[numClockSources - 1]) + ","; //Always have current time listed 
         for(int i = 0; i < numClockSources - 1; i++) {
