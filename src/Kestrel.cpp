@@ -1504,7 +1504,7 @@ int Kestrel::sleep()
             config.mode(SystemSleepMode::ULTRA_LOW_POWER) //Configure sleep mode
                 .network(NETWORK_INTERFACE_CELLULAR) //Keep network alive
                 // .flag(SystemSleepFlag::WAIT_CLOUD) //Wait for cloud communications to finish before going to sleep
-                // .duration(5min); //DEBUG!
+                .duration(20min) //DEBUG!
                 .gpio(Pins::Clock_INT, FALLING); //Trigger on falling clock pulse
             // enableSD(false); //Turn off SD power
             ioOB.digitalWrite(PinsOB::LED_EN, HIGH); //Disable LEDs (if not done already) 
@@ -1514,11 +1514,12 @@ int Kestrel::sleep()
             // System.sleep(config); //DEBUG!
             break;
         case PowerSaveModes::LOW_POWER:
-            Particle.disconnect(CloudDisconnectOptions().graceful(true).timeout(30s)); //Disconnect from cloud and make sure messages are sent first
+            // Particle.disconnect(CloudDisconnectOptions().graceful(true).timeout(30s)); //Disconnect from cloud and make sure messages are sent first
             config.mode(SystemSleepMode::ULTRA_LOW_POWER) //Configure sleep mode
-                // .network(NETWORK_INTERFACE_CELLULAR) //Keep network alive
+                .network(NETWORK_INTERFACE_CELLULAR) //Keep network alive
                 // .flag(SystemSleepFlag::WAIT_CLOUD) //Wait for cloud communications to finish before going to sleep
                 // .duration(5min); //DEBUG!
+                .duration(20min) //DEBUG!
                 .gpio(Pins::Clock_INT, FALLING); //Trigger on falling clock pulse
             // enableSD(false); //Turn off SD power
             enableAuxPower(false); //Turn all aux power off
@@ -1529,7 +1530,7 @@ int Kestrel::sleep()
             // System.sleep(config); //DEBUG!
             break;
         case PowerSaveModes::ULTRA_LOW_POWER:
-            
+            Particle.disconnect(CloudDisconnectOptions().graceful(true).timeout(30s)); //Disconnect from cloud and make sure messages are sent first
             config.mode(SystemSleepMode::ULTRA_LOW_POWER) //Configure sleep mode
                 // .network(NETWORK_INTERFACE_CELLULAR) //Keep network alive
                 // .flag(SystemSleepFlag::WAIT_CLOUD) //Wait for cloud communications to finish before going to sleep
@@ -1559,10 +1560,72 @@ int Kestrel::sleep()
     int fpscr = __get_FPSCR();
     Serial.print("FPSCR Status: 0x");
     Serial.println(fpscr, HEX);
+    Serial.print("Sleep Time: ");
+    Serial.println(millis()); 
+    // Serial.print("RTC Regs: \tCRTL:0x");
+    // Serial.print(rtc.readByte(0x07), HEX); //DEBUG!
+    // Serial.print("\tALM0:0x");
+    // Serial.println(rtc.readByte(0x0D), HEX);  //DEBUG!
+    // Serial.print("\tAML1:0x");
+    // Serial.println(rtc.readByte(0x14), HEX);  //DEBUG!
+
     Serial.flush();
+    delay(5000); //DEBUG!
     __set_FPSCR(fpscr & ~0x7); //Clear error bits to prevent assertion failure 
-    if(digitalRead(Pins::Clock_INT) != LOW) System.sleep(config); //If clock not triggered already, go to sleep
-    else return 0; //Otherwise exit with fail state //THROW ERROR!
+    if(digitalRead(Pins::Clock_INT) != LOW) {
+        SystemSleepResult result = System.sleep(config); //If clock not triggered already, go to sleep
+        delay(5000); //DEBUG!
+        Serial.print("WAKE! - "); //DEBUG!
+        Serial.print(static_cast<int>(result.wakeupReason())); //DEBUG!
+        Serial.print("\t");
+        Serial.println(millis()); //DEBUG!
+        Serial.flush(); //DEBUG!
+        // Particle.connect(); //DEBUG!
+        // waitFor(Particle.connected, 5000); //DEBUG!
+        // Particle.publish("DUMMY"); //DEBUG!
+        // delay(30000); //DEBUG!
+        // config.mode(SystemSleepMode::ULTRA_LOW_POWER) //Configure sleep mode
+        //         .network(NETWORK_INTERFACE_CELLULAR) //Keep network alive
+        //         // .flag(SystemSleepFlag::WAIT_CLOUD) //Wait for cloud communications to finish before going to sleep
+        //         .duration(1min) //DEBUG!
+        //         .gpio(Pins::Clock_INT, FALLING); //Trigger on falling clock pulse
+        int wakeupCount = 0; //Count how many times in a row the system is woken up by the timer
+        // result = System.sleep(config); //Go back to sleep after re-connecting //DEBUG!
+        // delay(10000); //DEBUG!
+        // Serial.print("WAKE! - "); //DEBUG!
+        // Serial.print(static_cast<int>(result.wakeupReason())); //DEBUG!
+        // Serial.print("\t");
+        // Serial.print(static_cast<int>(result.error())); //DEBUG!
+        // Serial.print("\t");
+        // Serial.println(millis()); //DEBUG!
+        // Serial.flush(); //DEBUG!
+        // result = System.sleep(config); //Go back to sleep after re-connecting //DEBUG!
+        // delay(10000); //DEBUG!
+        // Serial.print("WAKE! - "); //DEBUG!
+        // Serial.print(static_cast<int>(result.wakeupReason())); //DEBUG!
+        // Serial.print("\t");
+        // Serial.print(static_cast<int>(result.error())); //DEBUG!
+        // Serial.print("\t");
+        // Serial.println(millis()); //DEBUG!
+        // Serial.flush(); //DEBUG!
+        while((result.wakeupReason() == SystemSleepWakeupReason::BY_RTC || result.wakeupReason() == SystemSleepWakeupReason::BY_NETWORK) && wakeupCount < 16) { //FIX! Make variable 
+            if(result.wakeupReason() == SystemSleepWakeupReason::BY_RTC) {
+                Particle.connect();
+                waitFor(Particle.connected, 5000); //Wait for a max of 5 seconds for particle to connect
+                Particle.publish("DUMMY"); //DEBUG!
+                if(!Particle.connected()) throwError(CELL_FAIL | 0x100); //Or with reconnect flag
+                wakeupCount++;
+            }
+            Serial.println("Wakeup Attemp Done - return to sleep"); //DEBUG!
+            Serial.flush(); //DEBUG!
+            waitFor(Particle.connected, 5000);
+            result = System.sleep(config); //Go back to sleep after re-connecting
+        }
+    }
+    else {
+        Serial.println("ERR - Clock Already Triggered"); //DEBUG!
+        return 0; //Otherwise exit with fail state //THROW ERROR!
+    }
     return 1; //DEBUG! 
 }
 
@@ -1605,6 +1668,13 @@ int Kestrel::wake()
             enableAuxPower(true); //Turn aux power back on
             if((getTime() - posTime) > 14400) { //If it has been more than 4 hours since last GPS point reading
                 Serial.println("Power Up GPS"); //DEBUG!
+                ioOB.pinMode(PinsOB::GPS_INT, OUTPUT); //Turn GPS back on by toggling int pin
+                ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
+                delay(1000);
+                ioOB.digitalWrite(PinsOB::GPS_INT, HIGH);
+                delay(1000);
+                ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
+                delay(1000);
                 if(gps.begin() == false) {
                     criticalFault = true; //DEBUG! ??
                     throwError(GPS_INIT_FAIL);
