@@ -62,7 +62,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     }
     
     // setIndicatorState(IndicatorLight::ALL,IndicatorMode::WAITING); //Set all to blinking wait
-    
+    pinMode(Pins::Clock_INT, INPUT); //Make sure interrupt pin is always an input
     if(rtc.begin(true) == 0) criticalFault = true; //Use with external oscilator, set critical fault if not able to connect 
     //Perform wakeup in case switched off already
     Serial.println("Wake GPS"); //DEBUG!
@@ -1207,7 +1207,7 @@ bool Kestrel::waitUntilTimerDone()
     if(logPeriod == 0) return false; //Return if not already setup
     Serial.print("Time Now: "); //DEBUG!
     Serial.println(millis());
-    pinMode(Pins::Clock_INT, INPUT);
+    
     while(digitalRead(Pins::Clock_INT) == HIGH && ((millis() - timerStart) < (logPeriod*1000 + 500))){ //Wait until either timer has expired or clock interrupt has gone off //DEBUG! Give 500 ms cushion for testing RTC
         delay(1); 
         Particle.process(); //Run process continually while waiting in order to make sure device is responsive 
