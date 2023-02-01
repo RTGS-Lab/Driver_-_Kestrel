@@ -1656,7 +1656,7 @@ int Kestrel::wake()
                     unsigned long localTime = millis();
                     while((gps.getFixType() < 2 || gps.getFixType() > 4) && !gps.getGnssFixOk() && (localTime - millis()) < 30000); //Wait up to 30 seconds to get a GPS fix, if not, move on
                     if(!(gps.getFixType() >= 2 && gps.getFixType() <= 4)) { //If GPS failed to connect after that period, throw error
-                        throwError(GPS_TIMEOUT);
+                        throwError(GPS_UNAVAILABLE | 0x100); //Set subtype to timeout
                     }
                     updateGPS = true; //Set flag so position is updated at next update call
                 }
@@ -1686,7 +1686,7 @@ int Kestrel::wake()
                     unsigned long localTime = millis();
                     while((gps.getFixType() < 2 || gps.getFixType() > 4) && !gps.getGnssFixOk() && (localTime - millis()) < 60000); //Wait up to 60 seconds to get a GPS fix, if not, move on
                     if(!(gps.getFixType() >= 2 && gps.getFixType() <= 4)) { //If GPS failed to connect after that period, throw error
-                        throwError(GPS_TIMEOUT);
+                        throwError(GPS_UNAVAILABLE | 0x100); //Set subtype to timeout
                     }
                     updateGPS = true; //Set flag so position is updated at next update call
                 }

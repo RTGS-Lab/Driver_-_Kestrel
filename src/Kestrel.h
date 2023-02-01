@@ -149,13 +149,13 @@ struct dateTimeStruct {
 class Kestrel: public Sensor
 {
     constexpr static int MAX_NUM_ERRORS = 10; ///<Maximum number of errors to log before overwriting previous errors in buffer
-	const String FIRMWARE_VERSION = "1.6.0"; //FIX! Read from system??
+	const String FIRMWARE_VERSION = "1.6.1"; //FIX! Read from system??
 	
     const uint32_t KESTREL_PORT_RANGE_FAIL = 0x90010300; ///<Kestrel port assignment is out of range
 	const uint32_t CSA_INIT_FAIL = 0x100500F0; ///<Failure to initialize CSA Alpha or CSA Beta
 	const uint32_t GPS_INIT_FAIL = 0x100A00F8; ///<Failure to initialize the onboard GPS
 	const uint32_t GPS_READ_FAIL = 0x100B00F8; ///<Failure to read from the onboard GPS
-	const uint32_t GPS_TIMEOUT = 0xF00C00F8; ///<Timeout ocoured while waiting for GPS to connect (>30 seconds)
+	// const uint32_t GPS_TIMEOUT = 0xF00C00F8; ///<Timeout ocoured while waiting for GPS to connect (>30 seconds)
 	const uint32_t CELL_FAIL = 0xF00700F6; ///<Failure to connect to cell network
     const uint32_t CLOUD_FAIL = 0xF00800F6; ///<Failure to connect to particle cloud
 	const uint32_t SYSTEM_RESET = 0xF00A0000; ///<Reported on first init, along with reason for reset
