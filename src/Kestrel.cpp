@@ -1504,7 +1504,7 @@ int Kestrel::sleep()
             config.mode(SystemSleepMode::ULTRA_LOW_POWER) //Configure sleep mode
                 .network(NETWORK_INTERFACE_CELLULAR) //Keep network alive
                 // .flag(SystemSleepFlag::WAIT_CLOUD) //Wait for cloud communications to finish before going to sleep
-                .duration(20min) //DEBUG!
+                // .duration(20min) //DEBUG!
                 .gpio(Pins::Clock_INT, FALLING); //Trigger on falling clock pulse
             // enableSD(false); //Turn off SD power
             ioOB.digitalWrite(PinsOB::LED_EN, HIGH); //Disable LEDs (if not done already) 
@@ -1574,52 +1574,28 @@ int Kestrel::sleep()
     __set_FPSCR(fpscr & ~0x7); //Clear error bits to prevent assertion failure 
     if(digitalRead(Pins::Clock_INT) != LOW) {
         SystemSleepResult result = System.sleep(config); //If clock not triggered already, go to sleep
-        delay(5000); //DEBUG!
-        Serial.print("WAKE! - "); //DEBUG!
-        Serial.print(static_cast<int>(result.wakeupReason())); //DEBUG!
-        Serial.print("\t");
-        Serial.println(millis()); //DEBUG!
-        Serial.flush(); //DEBUG!
-        // Particle.connect(); //DEBUG!
-        // waitFor(Particle.connected, 5000); //DEBUG!
-        // Particle.publish("DUMMY"); //DEBUG!
-        // delay(30000); //DEBUG!
-        // config.mode(SystemSleepMode::ULTRA_LOW_POWER) //Configure sleep mode
-        //         .network(NETWORK_INTERFACE_CELLULAR) //Keep network alive
-        //         // .flag(SystemSleepFlag::WAIT_CLOUD) //Wait for cloud communications to finish before going to sleep
-        //         .duration(1min) //DEBUG!
-        //         .gpio(Pins::Clock_INT, FALLING); //Trigger on falling clock pulse
-        int wakeupCount = 0; //Count how many times in a row the system is woken up by the timer
-        // result = System.sleep(config); //Go back to sleep after re-connecting //DEBUG!
-        // delay(10000); //DEBUG!
-        // Serial.print("WAKE! - "); //DEBUG!
-        // Serial.print(static_cast<int>(result.wakeupReason())); //DEBUG!
-        // Serial.print("\t");
-        // Serial.print(static_cast<int>(result.error())); //DEBUG!
-        // Serial.print("\t");
-        // Serial.println(millis()); //DEBUG!
-        // Serial.flush(); //DEBUG!
-        // result = System.sleep(config); //Go back to sleep after re-connecting //DEBUG!
-        // delay(10000); //DEBUG!
-        // Serial.print("WAKE! - "); //DEBUG!
-        // Serial.print(static_cast<int>(result.wakeupReason())); //DEBUG!
-        // Serial.print("\t");
-        // Serial.print(static_cast<int>(result.error())); //DEBUG!
-        // Serial.print("\t");
-        // Serial.println(millis()); //DEBUG!
-        // Serial.flush(); //DEBUG!
-        while((result.wakeupReason() == SystemSleepWakeupReason::BY_RTC || result.wakeupReason() == SystemSleepWakeupReason::BY_NETWORK) && wakeupCount < 16) { //FIX! Make variable 
-            if(result.wakeupReason() == SystemSleepWakeupReason::BY_RTC) {
-                Particle.connect();
-                waitFor(Particle.connected, 5000); //Wait for a max of 5 seconds for particle to connect
-                Particle.publish("DUMMY"); //DEBUG!
-                if(!Particle.connected()) throwError(CELL_FAIL | 0x100); //Or with reconnect flag
-                wakeupCount++;
-            }
-            Serial.println("Wakeup Attemp Done - return to sleep"); //DEBUG!
+        if(powerSaveMode == PowerSaveModes::LOW_POWER) { //Deal with extended sleep periods in low power mode
+            delay(5000); //DEBUG!
+            Serial.print("WAKE! - "); //DEBUG!
+            Serial.print(static_cast<int>(result.wakeupReason())); //DEBUG!
+            Serial.print("\t");
+            Serial.println(millis()); //DEBUG!
             Serial.flush(); //DEBUG!
-            waitFor(Particle.connected, 5000);
-            result = System.sleep(config); //Go back to sleep after re-connecting
+
+            int wakeupCount = 0; //Count how many times in a row the system is woken up by the timer
+            while((result.wakeupReason() == SystemSleepWakeupReason::BY_RTC || result.wakeupReason() == SystemSleepWakeupReason::BY_NETWORK) && wakeupCount < 16) { //FIX! Make variable 
+                if(result.wakeupReason() == SystemSleepWakeupReason::BY_RTC) {
+                    Particle.connect();
+                    waitFor(Particle.connected, 5000); //Wait for a max of 5 seconds for particle to connect
+                    Particle.publish("DUMMY"); //DEBUG!
+                    if(!Particle.connected()) throwError(CELL_FAIL | 0x100); //Or with reconnect flag
+                    wakeupCount++;
+                }
+                Serial.println("Wakeup Attemp Done - return to sleep"); //DEBUG!
+                Serial.flush(); //DEBUG!
+                waitFor(Particle.connected, 5000);
+                result = System.sleep(config); //Go back to sleep after re-connecting
+            }
         }
     }
     else {
