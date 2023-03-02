@@ -1533,18 +1533,20 @@ int Kestrel::sleep()
             Particle.disconnect(CloudDisconnectOptions().graceful(true).timeout(30s)); //Disconnect from cloud and make sure messages are sent first
             config.mode(SystemSleepMode::ULTRA_LOW_POWER) //Configure sleep mode
                 // .network(NETWORK_INTERFACE_CELLULAR) //Keep network alive
-                // .flag(SystemSleepFlag::WAIT_CLOUD) //Wait for cloud communications to finish before going to sleep
+                .flag(SystemSleepFlag::WAIT_CLOUD) //Wait for cloud communications to finish before going to sleep
                 // .duration(5min); //DEBUG!
                 .gpio(Pins::Clock_INT, FALLING); //Trigger on falling clock pulse
             enableAuxPower(false); //Turn all aux power off
             ioOB.digitalWrite(PinsOB::LED_EN, HIGH); //Disable LEDs (if not done already) 
-            ioOB.digitalWrite(PinsOB::CSA_EN, LOW); //Disable CSAs
+            // ioOB.digitalWrite(PinsOB::CSA_EN, LOW); //Disable CSAs //DEBUG! //FIX!
+
             // //SLEEP FRAM //FIX!
             // Wire.beginTransmission(0x7C);
             // Wire.write((0x50 << 1) | 0x01); //Shift to add "r/w" bit
             // Wire.endTransmission(false);
             // Wire.beginTransmission(0x43);
             // Wire.endTransmission();
+
             //SLEEP ACCEL //FIX!
             Wire.beginTransmission(0x15);
             Wire.write(0x0D); //Write to control register
@@ -1670,6 +1672,41 @@ int Kestrel::wake()
             enableSD(true); //Turn SD back on
             updateTime(); //Grab updated time each wakeup
             break;
+        case PowerSaveModes::ULTRA_LOW_POWER:
+            enableAuxPower(true); //Turn aux power back on
+            // Particle.connect();
+            // waitFor(Particle.connected, 180s); //Wait for a max of 180 seconds for particle to connect
+            // if(!Particle.connected()) throwError(CELL_FAIL | 0x100); //Throw error if not connected after given period - Or with reconnect flag
+            //TURN ON GPS! FIX!
+            // Serial.println("Power Up GPS"); //DEBUG!
+            // ioOB.pinMode(PinsOB::GPS_INT, OUTPUT); //Turn GPS back on by toggling int pin
+            // ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
+            // delay(1000);
+            // ioOB.digitalWrite(PinsOB::GPS_INT, HIGH);
+            // delay(1000);
+            // ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
+            // delay(1000);
+            // if(gps.begin() == false) {
+            //     criticalFault = true; //DEBUG! ??
+            //     throwError(GPS_INIT_FAIL);
+            //     Serial.println("GPS ERROR");
+            // }
+            // else {
+            //     gps.setI2COutput(COM_TYPE_UBX);
+            //     // gps.setAutoPVT(true); //DEBUG!
+            //     unsigned long localTime = millis();
+            //     while((gps.getFixType() < 2 || gps.getFixType() > 4) && !gps.getGnssFixOk() && (localTime - millis()) < 60000); //Wait up to 60 seconds to get a GPS fix, if not, move on
+            //     if(!(gps.getFixType() >= 2 && gps.getFixType() <= 4)) { //If GPS failed to connect after that period, throw error
+            //         throwError(GPS_UNAVAILABLE | 0x100); //Set subtype to timeout
+            //     }
+            //     updateGPS = true; //Set flag so position is updated at next update call
+            // }
+            //TURN ON ACCEL! FIX!
+            //TURN ON FRAM! FIX!
+            enableSD(true); //Turn SD back on
+            updateTime(); //Grab updated time each wakeup
+            break;
+
         default:
             //THROW ERROR??
             return 0; //Mimic perfromance mode if not specificed  
