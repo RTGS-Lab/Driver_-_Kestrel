@@ -64,6 +64,10 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     // setIndicatorState(IndicatorLight::ALL,IndicatorMode::WAITING); //Set all to blinking wait
     pinMode(Pins::Clock_INT, INPUT); //Make sure interrupt pin is always an input
     if(rtc.begin(true) == 0) criticalFault = true; //Use with external oscilator, set critical fault if not able to connect 
+    else {
+        rtc.enableAlarm(false, 0); //Disable all alarms on startup //DEBUG! Use to prevent alarm 1 from ever being activated 
+        rtc.enableAlarm(false, 1); 
+    }
     //Perform wakeup in case switched off already
     Serial.println("Wake GPS"); //DEBUG!
     ioOB.pinMode(PinsOB::GPS_INT, OUTPUT); //Turn GPS back on by toggling int pin
@@ -1531,9 +1535,11 @@ int Kestrel::sleep()
             break;
         case PowerSaveModes::ULTRA_LOW_POWER:
             Particle.disconnect(CloudDisconnectOptions().graceful(true).timeout(30s)); //Disconnect from cloud and make sure messages are sent first
+            // Cellular.off();
+            // waitFor(Cellular.isOff, 30000); //Wait up to 30 seconds for cell to turn off before sleep
             config.mode(SystemSleepMode::ULTRA_LOW_POWER) //Configure sleep mode
                 // .network(NETWORK_INTERFACE_CELLULAR) //Keep network alive
-                .flag(SystemSleepFlag::WAIT_CLOUD) //Wait for cloud communications to finish before going to sleep
+                // .flag(SystemSleepFlag::WAIT_CLOUD) //Wait for cloud communications to finish before going to sleep
                 // .duration(5min); //DEBUG!
                 .gpio(Pins::Clock_INT, FALLING); //Trigger on falling clock pulse
             enableAuxPower(false); //Turn all aux power off
@@ -1589,7 +1595,7 @@ int Kestrel::sleep()
                 if(result.wakeupReason() == SystemSleepWakeupReason::BY_RTC) {
                     Particle.connect();
                     waitFor(Particle.connected, 5000); //Wait for a max of 5 seconds for particle to connect
-                    Particle.publish("DUMMY"); //DEBUG!
+                    // Particle.publish("DUMMY"); //DEBUG!
                     if(!Particle.connected()) throwError(CELL_FAIL | 0x100); //Or with reconnect flag
                     wakeupCount++;
                 }
