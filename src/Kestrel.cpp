@@ -1508,7 +1508,7 @@ int Kestrel::sleep()
             config.mode(SystemSleepMode::ULTRA_LOW_POWER) //Configure sleep mode
                 .network(NETWORK_INTERFACE_CELLULAR) //Keep network alive
                 // .flag(SystemSleepFlag::WAIT_CLOUD) //Wait for cloud communications to finish before going to sleep
-                // .duration(20min) //DEBUG!
+                .duration(20min) //DEBUG!
                 .gpio(Pins::Clock_INT, FALLING); //Trigger on falling clock pulse
             // enableSD(false); //Turn off SD power
             ioOB.digitalWrite(PinsOB::LED_EN, HIGH); //Disable LEDs (if not done already) 
@@ -1604,6 +1604,9 @@ int Kestrel::sleep()
                 waitFor(Particle.connected, 5000);
                 result = System.sleep(config); //Go back to sleep after re-connecting
             }
+        }
+        if(powerSaveMode == PowerSaveModes::BALANCED) {
+            if(result.wakeupReason() == SystemSleepWakeupReason::BY_RTC) throwError(ALARM_FAIL | 0x100); //Throw error due to wake from timer not clock int 
         }
     }
     else {
