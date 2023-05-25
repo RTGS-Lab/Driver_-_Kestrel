@@ -399,7 +399,7 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 			
 		}
 		else { //If unable to initialzie ADC
-			output = output + "\"PORT_V\":[null],\"PORT_I\":[null],\"AVG_P\":[null]";
+			output = output + "\"PORT_V\":[null],\"PORT_I\":[null],\"AVG_P\":[null],";
 			throwError(CSA_INIT_FAIL); //Throw error for global CSA failure
 		}
         output = output + "\"ALS\":";
@@ -1546,12 +1546,12 @@ int Kestrel::sleep()
             ioOB.digitalWrite(PinsOB::LED_EN, HIGH); //Disable LEDs (if not done already) 
             // ioOB.digitalWrite(PinsOB::CSA_EN, LOW); //Disable CSAs //DEBUG! //FIX!
 
-            // //SLEEP FRAM //FIX!
-            // Wire.beginTransmission(0x7C);
-            // Wire.write((0x50 << 1) | 0x01); //Shift to add "r/w" bit
-            // Wire.endTransmission(false);
-            // Wire.beginTransmission(0x43);
-            // Wire.endTransmission();
+            //SLEEP FRAM //FIX!
+            Wire.beginTransmission(0x7C);
+            Wire.write((0x50 << 1) | 0x01); //Shift to add "r/w" bit
+            Wire.endTransmission(false);
+            Wire.beginTransmission(0x43);
+            Wire.endTransmission();
 
             //SLEEP ACCEL //FIX!
             Wire.beginTransmission(0x15);

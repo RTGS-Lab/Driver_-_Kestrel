@@ -149,7 +149,7 @@ struct dateTimeStruct {
 class Kestrel: public Sensor
 {
     constexpr static int MAX_NUM_ERRORS = 10; ///<Maximum number of errors to log before overwriting previous errors in buffer
-	const String FIRMWARE_VERSION = "1.6.4"; //FIX! Read from system??
+	const String FIRMWARE_VERSION = "1.6.5"; //FIX! Read from system??
 	
     const uint32_t KESTREL_PORT_RANGE_FAIL = 0x90010300; ///<Kestrel port assignment is out of range
 	const uint32_t CSA_INIT_FAIL = 0x100500F0; ///<Failure to initialize CSA Alpha or CSA Beta
