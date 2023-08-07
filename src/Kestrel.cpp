@@ -67,6 +67,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     else {
         rtc.enableAlarm(false, 0); //Disable all alarms on startup //DEBUG! Use to prevent alarm 1 from ever being activated 
         rtc.enableAlarm(false, 1); 
+        rtc.setMode(MCP79412::Mode::Normal); //Make sure to enforce normal mode
     }
     //Perform wakeup in case switched off already
     Serial.println("Wake GPS"); //DEBUG!
@@ -249,7 +250,9 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
         rtcConfigA = rtcConfigA | ((rtc.readByte(3) & 0x38) << 1); //Read in OSCRUN, PWRFAIL, VBATEN bits
         uint8_t rtcConfigB = rtc.readByte(7); //Read in control byte
         uint8_t rtcConfigC = rtc.readByte(8); //Read in trim byte
-        output = output + "\"RTC_Config\":[" + String(rtcConfigA) + "," + String(rtcConfigB) + "," + String(rtcConfigC) + "],"; //Concatonate to output
+        uint8_t rtcConfigD = rtc.readByte(0x0D); //Read in ALARM0 reg
+        uint8_t rtcConfigE = rtc.readByte(0x14); //Read in ALARM1 reg
+        output = output + "\"RTC_Config\":[" + String(rtcConfigA) + "," + String(rtcConfigB) + "," + String(rtcConfigC) + "," + String(rtcConfigD) + "," + String(rtcConfigE) + "],"; //Concatonate to output
 	}
 
 	if(diagnosticLevel <= 3) {
@@ -1512,6 +1515,7 @@ int Kestrel::sleep()
                 .gpio(Pins::Clock_INT, FALLING); //Trigger on falling clock pulse
             // enableSD(false); //Turn off SD power
             ioOB.digitalWrite(PinsOB::LED_EN, HIGH); //Disable LEDs (if not done already) 
+            led.sleep(true); //Put LED driver into low power mode 
             if(!gps.powerOffWithInterrupt(3600000, VAL_RXM_PMREQ_WAKEUPSOURCE_EXTINT0)) throwError(GPS_READ_FAIL); //Shutdown for an hour unless woken up via pin trip
 
             // result = System.sleep(config);
@@ -1527,7 +1531,8 @@ int Kestrel::sleep()
                 .gpio(Pins::Clock_INT, FALLING); //Trigger on falling clock pulse
             // enableSD(false); //Turn off SD power
             enableAuxPower(false); //Turn all aux power off
-            ioOB.digitalWrite(PinsOB::LED_EN, HIGH); //Disable LEDs (if not done already) 
+            ioOB.digitalWrite(PinsOB::LED_EN, HIGH); //Disable LEDs (if not done already)
+            led.sleep(true); //Put LED driver into low power mode  
             // gps.powerOffWithInterrupt(3600000, VAL_RXM_PMREQ_WAKEUPSOURCE_EXTINT0); //Shutdown for an hour unless woken up via pin trip
 
             // result = System.sleep(config);
@@ -1544,20 +1549,21 @@ int Kestrel::sleep()
                 .gpio(Pins::Clock_INT, FALLING); //Trigger on falling clock pulse
             enableAuxPower(false); //Turn all aux power off
             ioOB.digitalWrite(PinsOB::LED_EN, HIGH); //Disable LEDs (if not done already) 
+            led.sleep(true); //Put LED driver into low power mode 
             // ioOB.digitalWrite(PinsOB::CSA_EN, LOW); //Disable CSAs //DEBUG! //FIX!
 
-            //SLEEP FRAM //FIX!
-            Wire.beginTransmission(0x7C);
-            Wire.write((0x50 << 1) | 0x01); //Shift to add "r/w" bit
-            Wire.endTransmission(false);
-            Wire.beginTransmission(0x43);
-            Wire.endTransmission();
+            // //SLEEP FRAM //FIX!
+            // Wire.beginTransmission(0x7C);
+            // Wire.write((0x50 << 1) | 0x01); //Shift to add "r/w" bit
+            // Wire.endTransmission(false);
+            // Wire.beginTransmission(0x43);
+            // Wire.endTransmission();
 
-            //SLEEP ACCEL //FIX!
-            Wire.beginTransmission(0x15);
-            Wire.write(0x0D); //Write to control register
-            Wire.write(0x01); //Set power down
-            Wire.endTransmission();
+            // //SLEEP ACCEL //FIX!
+            // Wire.beginTransmission(0x15);
+            // Wire.write(0x0D); //Write to control register
+            // Wire.write(0x01); //Set power down
+            // Wire.endTransmission();
             break;
         default:
             //THROW ERROR??
