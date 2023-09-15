@@ -54,6 +54,7 @@ Distributed as-is; no warranty is given.
 #include "VEML3328/src/VEML3328.h"
 #include <Adafruit_SHT4x.h>
 #include <MXC6655.h>
+#include <arduino_bma456.h>
 // #include <GlobalPins.h>
 
 
@@ -136,6 +137,16 @@ namespace IndicatorMode {
 	
 }
 
+namespace AccelType {
+	constexpr uint8_t MXC6655 = 0;
+	constexpr uint8_t BMA456 = 1;
+}
+
+namespace HardwareVersion {
+	constexpr uint8_t PRE_1v9 = 0;
+	constexpr uint8_t MODEL_1v9 = 1;
+}
+
 struct dateTimeStruct {
 			int year;
 			int month;
@@ -149,7 +160,7 @@ struct dateTimeStruct {
 class Kestrel: public Sensor
 {
     constexpr static int MAX_NUM_ERRORS = 10; ///<Maximum number of errors to log before overwriting previous errors in buffer
-	const String FIRMWARE_VERSION = "1.6.6"; //FIX! Read from system??
+	const String FIRMWARE_VERSION = "1.7.0"; //FIX! Read from system??
 	
     const uint32_t KESTREL_PORT_RANGE_FAIL = 0x90010300; ///<Kestrel port assignment is out of range
 	const uint32_t CSA_INIT_FAIL = 0x100500F0; ///<Failure to initialize CSA Alpha or CSA Beta
@@ -241,6 +252,7 @@ class Kestrel: public Sensor
 		Adafruit_SHT4x atmos;
 		MXC6655 accel; 
 
+
 		
 		PCA9634 led;
 		const int ledBrightness = 75; //Default to 75% on
@@ -282,6 +294,8 @@ class Kestrel: public Sensor
 		bool initDone = false; //Used to keep track if the initaliztion has run - used by hasReset() 
 		struct tm timeinfo = {0}; //Create struct in C++ time land
 		time_t cstToUnix(int year, int month, int day, int hour, int minute, int second);
+		uint8_t accelUsed = AccelType::MXC6655; //Default to MXC6655, only change is BMA456 is detected 
+		uint8_t boardVersion = HardwareVersion::PRE_1v9; //Assume pre v1.8 to start
 };		
 
 // constexpr uint8_t Kestrel::numTalonPorts; 

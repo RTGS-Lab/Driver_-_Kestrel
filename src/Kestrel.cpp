@@ -31,12 +31,12 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     selfPointer = this;
     System.on(time_changed, timechange_handler);
     System.on(out_of_memory, outOfMemoryHandler);
-    #if defined(ARDUINO) && ARDUINO >= 100 
-		Wire.begin();
-        Wire.setClock(400000); //Confirm operation in fast mode
-	#elif defined(PARTICLE)
+    // #if defined(ARDUINO) && ARDUINO >= 100 
+		// Wire.begin();
+        // Wire.setClock(100000); //Confirm operation in fast mode
+	// #elif defined(PARTICLE)
 		if(!Wire.isEnabled()) Wire.begin(); //Only initialize I2C if not done already //INCLUDE FOR USE WITH PARTICLE 
-	#endif
+	// #endif
     if(!initDone) throwError(SYSTEM_RESET | ((System.resetReason() << 8) & 0xFF00)); //Throw reset error with reason for reset as subtype. Truncate resetReason to one byte. This will include all predefined reasons, but will prevent issues if user returns some large (technically can be up to 32 bits) custom reset reason
     bool globState = enableI2C_Global(false); //Turn off external I2C
     bool obState = enableI2C_OB(true); //Turn on internal I2C
@@ -44,7 +44,11 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     if(ioTalon.begin() != 0) criticalFault = true;
     ioTalon.safeMode(PCAL9535A::SAFEOFF); //DEBUG! //Turn safe mode off to speed up turn-off times for Talons
     enableAuxPower(true); //Turn on aux power 
-    csaAlpha.begin();
+    if(csaAlpha.begin() == false) { //If fails at default address, then try alt v1.9 address
+        csaAlpha.setAddress(0x19);
+        if(csaAlpha.begin()) boardVersion = HardwareVersion::MODEL_1v9; //If alt address works, board must be a v1.9
+        //else THROW ERROR! FIX!
+    }
     csaBeta.begin();
     csaAlpha.setFrequency(Frequency::SPS_64); //Set to ensure at least 24 hours between accumulator rollover 
     // delay(100); //DEBUG! For GPS
@@ -102,7 +106,11 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     }
     /// AUTO ZERO ACCEL
     int accelInitError = accel.begin();
-    if(accelInitError == 0) { //If accel read is good
+    if(accelInitError == -1) {
+        if(bma456.begin() == true) accelUsed = AccelType::BMA456; //If BMA456 detected, switch to that
+    }
+     
+    if(accelInitError == 0 && accelUsed == AccelType::MXC6655) { //If accel read is good and MXC6655 is used, try zero
         int accelError = accel.updateAccelAll(); //Get updated values
         if(accelError != 0) {
             throwError(ACCEL_DATA_FAIL | (accelError << 8)); //Throw error for failure to communicate with accel, OR error code
@@ -215,6 +223,8 @@ String Kestrel::getMetadata()
     else if (PLATFORM_ID == PLATFORM_B5SOM) metadata = metadata + "\"Model\":\"B5SoM\","; //Report B5SoM
     else metadata = metadata + "\"Model\":null,"; //Report null if for some reason the firmware is running on another device 
 
+    if(boardVersion == HardwareVersion::PRE_1v9) metadata = metadata + "\"Hardware\":\"<v1.9\",";
+    if(boardVersion == HardwareVersion::MODEL_1v9) metadata = metadata + "\"Hardware\":\"v1.9\",";
     ///////// ADD SHT40!
 
 	
@@ -429,22 +439,39 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
         }
         atmos.~Adafruit_SHT4x(); //Delete objects
 
-        int accelInitError = accel.begin();
-        if(accelInitError == 0) {
-            
-            int accelError = accel.updateAccelAll();
-            if(accelError != 0) {
-                throwError(ACCEL_DATA_FAIL | (accelError << 8)); //Throw error for failure to communicate with accel, OR error code
-                //FIX! Null outputs??
+        if(accelUsed == AccelType::MXC6655) { //If MXC6655 is used, proceed with reading
+            int accelInitError = accel.begin();
+            if(accelInitError == 0) {
+                
+                int accelError = accel.updateAccelAll();
+                if(accelError != 0) {
+                    throwError(ACCEL_DATA_FAIL | (accelError << 8)); //Throw error for failure to communicate with accel, OR error code
+                    //FIX! Null outputs??
+                }
+                output = output + "\"ACCEL\":[" + String(accel.data[0]) + "," + String(accel.data[1]) + "," + String(accel.data[2]) + "],"; 
+                temperatureString = temperatureString + String(accel.getTemp(), 4);
             }
-            output = output + "\"ACCEL\":[" + String(accel.data[0]) + "," + String(accel.data[1]) + "," + String(accel.data[2]) + "],"; 
-            temperatureString = temperatureString + String(accel.getTemp(), 4);
+            else {
+                throwError(ACCEL_DATA_FAIL | (accelInitError << 8)); //Throw error for failure to communicate with accel, OR error code 
+                output = output + "\"ACCEL\":[null],";
+                temperatureString = temperatureString + "null";
+            }
         }
-        else {
-            throwError(ACCEL_DATA_FAIL | (accelInitError << 8)); //Throw error for failure to communicate with accel, OR error code 
-            output = output + "\"ACCEL\":[null],";
-            temperatureString = temperatureString + "null";
+        else if (accelUsed == AccelType::BMA456) { //If BMA456 is used, proceed with reading
+            float x = 0, y = 0, z = 0;
+            int32_t temp = 0;
+            bma456.initialize();
+            for(int i = 0; i < 5; i++) { //FIX! DEBUG!
+                bma456.getAcceleration(&x, &y, &z);
+                delay(10);
+            }
+            
+            temp = bma456.getTemperature();
+
+            output = output + "\"ACCEL\":[" + String(x) + "," + String(y) + "," + String(z) + "],"; 
+            temperatureString = temperatureString + String(temp);
         }
+
 		// ioSense.digitalWrite(pinsSense::MUX_EN, HIGH); //Turn MUX back off 
 		// digitalWrite(KestrelPins::PortBPins[talonPort], LOW); //Return to default external connecton
         temperatureString = temperatureString + "]";
