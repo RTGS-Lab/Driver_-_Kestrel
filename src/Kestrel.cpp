@@ -36,6 +36,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
         // Wire.setClock(100000); //Confirm operation in fast mode
 	// #elif defined(PARTICLE)
 		if(!Wire.isEnabled()) Wire.begin(); //Only initialize I2C if not done already //INCLUDE FOR USE WITH PARTICLE 
+        Wire.setClock(400000);
 	// #endif
     if(!initDone) throwError(SYSTEM_RESET | ((System.resetReason() << 8) & 0xFF00)); //Throw reset error with reason for reset as subtype. Truncate resetReason to one byte. This will include all predefined reasons, but will prevent issues if user returns some large (technically can be up to 32 bits) custom reset reason
     bool globState = enableI2C_Global(false); //Turn off external I2C
