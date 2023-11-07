@@ -109,6 +109,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     int accelInitError = accel.begin();
     if(accelInitError == -1) {
         if(bma456.begin() == true) accelUsed = AccelType::BMA456; //If BMA456 detected, switch to that
+        // Serial.println("MXC6655 Detect fail!"); //DEBUG!
     }
      
     if(accelInitError == 0 && accelUsed == AccelType::MXC6655) { //If accel read is good and MXC6655 is used, try zero
@@ -256,7 +257,8 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 
 	if(diagnosticLevel <= 2) {
 		//TBD
-        output = output + "\"Accel_Offset\":[" + String(accel.offset[0]) + "," + String(accel.offset[1]) + "," + String(accel.offset[2]) + "],"; 
+        if(accelUsed == AccelType::MXC6655) output = output + "\"Accel_Offset\":[" + String(accel.offset[0]) + "," + String(accel.offset[1]) + "," + String(accel.offset[2]) + "],"; 
+        if(accelUsed == AccelType::BMA456) output = output + "\"Accel_Offset\":[0,0,0],"; 
         uint8_t rtcConfigA = (rtc.readByte(0) & 0x80); //Read in ST bit
         rtcConfigA = rtcConfigA | ((rtc.readByte(3) & 0x38) << 1); //Read in OSCRUN, PWRFAIL, VBATEN bits
         uint8_t rtcConfigB = rtc.readByte(7); //Read in control byte
@@ -453,12 +455,13 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
                 temperatureString = temperatureString + String(accel.getTemp(), 4);
             }
             else {
-                throwError(ACCEL_DATA_FAIL | (accelInitError << 8)); //Throw error for failure to communicate with accel, OR error code 
+                throwError(ACCEL_DATA_FAIL); //Throw error for failure to communicate with accel
                 output = output + "\"ACCEL\":[null],";
                 temperatureString = temperatureString + "null";
             }
         }
         else if (accelUsed == AccelType::BMA456) { //If BMA456 is used, proceed with reading
+            bool bma456Present = bma456.begin();
             float x = 0, y = 0, z = 0;
             int32_t temp = 0;
             bma456.initialize();
@@ -469,8 +472,14 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
             
             temp = bma456.getTemperature();
 
-            output = output + "\"ACCEL\":[" + String(x) + "," + String(y) + "," + String(z) + "],"; 
-            temperatureString = temperatureString + String(temp);
+            if(bma456Present) { //FIX! Check directly for failure instead of implied failure by presence or abscence 
+                output = output + "\"ACCEL\":[" + String(x/1000.0) + "," + String(y/1000.0) + "," + String(z/1000.0) + "],"; 
+                temperatureString = temperatureString + String(temp);
+            }
+            else {
+                output = output + "\"ACCEL\":[null,null,null],"; 
+                temperatureString = temperatureString + "null";
+            }
         }
 
 		// ioSense.digitalWrite(pinsSense::MUX_EN, HIGH); //Turn MUX back off 
