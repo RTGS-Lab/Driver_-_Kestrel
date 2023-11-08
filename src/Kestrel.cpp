@@ -18,11 +18,12 @@ Distributed as-is; no warranty is given.
 
 Kestrel* Kestrel::selfPointer;
 
-Kestrel::Kestrel() : ioOB(0x20), ioTalon(0x21), led(0x52), csaAlpha(2, 2, 2, 2, 0x18), csaBeta(2, 10, 10, 10, 0x14)
+Kestrel::Kestrel(bool useSensors) : ioOB(0x20), ioTalon(0x21), led(0x52), csaAlpha(2, 2, 2, 2, 0x18), csaBeta(2, 10, 10, 10, 0x14)
 {
 	// port = talonPort; //Copy to local
 	// version = hardwareVersion; //Copy to local
     // talonPort = 0x0F; //Set dummy Talon port for reporting
+    reportSensors = useSensors;
     sensorInterface = BusType::CORE;
 }
 
@@ -182,6 +183,40 @@ String Kestrel::getErrors()
 
 String Kestrel::getData(time_t time)
 {
+    if(reportSensors) {
+        bool auxState = enableAuxPower(true); //Turn on AUX power for light sensor
+        bool globState = enableI2C_Global(false); //Turn off external I2C
+        bool obState = enableI2C_OB(true); //Turn on internal I2C
+        String output = "\"Kestrel\":{"; //Open JSON blob
+        output = output + "\"ALS\":{";
+        int error = als.begin();
+        if(error == 0) {
+            bool readState = false;
+            als.AutoRange(); //Get new values
+            // delay(1000); //DEBUG!
+            String alsStr[5]; 
+            for(int i = 0; i < 5; i++) { //Grab values from each channel, check for error and insert nulls as appropriate 
+                float val = als.GetValue(static_cast<VEML3328::Channel>(i), readState); 
+                if(readState) {
+                    alsStr[i] = "null"; //If error, report null
+                    throwError(ALS_DATA_FAIL); //Throw error
+                    readState = false; //Reset flag
+                }
+                else alsStr[i] = String(val);
+            }
+            output = output + "\"Clear\":" + alsStr[0] + ",\"Red\":" + alsStr[1] + ",\"Green\":" + alsStr[2] + ",\"Blue\":" + alsStr[3] + ",\"IR\":" + alsStr[4]; //appenbd ALS results 
+            // if(readState[0] || readState[1] || readState[2] || readState[3] || readState[4]) throwError(ALS_DATA_FAIL); //If ANY of the channel reads fail, throw an error 
+        }
+        else {
+            output = output + "\"Red\":null,\"Green\":null,\"Blue\":null,\"Clear\":null,\"IR\":null";
+            throwError(ALS_INIT_FAIL | (error << 8)); //Throw error with I2C status included 
+        }
+        output = output + "},\"Pos\":[15]}";
+        enableI2C_Global(globState); //Return to previous state
+        enableI2C_OB(obState);
+        enableAuxPower(auxState);
+        return output;
+    }
     return "";
 }
 
@@ -421,12 +456,14 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 			throwError(CSA_INIT_FAIL); //Throw error for global CSA failure
 		}
         output = output + "\"ALS\":";
-        if(als.begin() == 0) {
+        int error = als.begin();
+        if(error == 0) {
+            als.AutoRange();
             output = output + String(als.GetLux()) + ","; //appenbd ALS results 
         }
         else {
             output = output + "null,";
-            //THROW ERROR
+            throwError(ALS_INIT_FAIL | (error << 8)); //Throw error with I2C status included 
         }
 
         String temperatureString = "\"Temperature\":["; //Used to gather temp from multiple sources

@@ -160,7 +160,7 @@ struct dateTimeStruct {
 class Kestrel: public Sensor
 {
     constexpr static int MAX_NUM_ERRORS = 10; ///<Maximum number of errors to log before overwriting previous errors in buffer
-	const String FIRMWARE_VERSION = "1.7.3"; //FIX! Read from system??
+	const String FIRMWARE_VERSION = "1.7.4"; //FIX! Read from system??
 	
     const uint32_t KESTREL_PORT_RANGE_FAIL = 0x90010300; ///<Kestrel port assignment is out of range
 	const uint32_t CSA_INIT_FAIL = 0x100500F0; ///<Failure to initialize CSA Alpha or CSA Beta
@@ -185,10 +185,12 @@ class Kestrel: public Sensor
 	const uint32_t ACCEL_DATA_FAIL = 0x100D00F7; ///<Failed to read data from onboard accelerometer
 	const uint32_t ALARM_FAIL = 0x500600F5; ///<RTC alarm failed to wake device 
 	const uint32_t TIME_DISAGREE = 0x70030000; ///<At least one time source disagrees with the others
+	const uint32_t ALS_INIT_FAIL = 0x101400F7; ///<Failure to initialize the ALS on the Kestrel board
+	const uint32_t ALS_DATA_FAIL = 0x101500F7; ///<Failure to read data from the ALS on the Kestrel board
 
 	const time_t CELL_TIMEOUT = 300000; ///<Amount of time [ms] to wait while trying to connect to cell
     public:
-        Kestrel();
+        Kestrel(bool useSensors = false);
 		SFE_UBLOX_GNSS gps;
         String begin(time_t time, bool &criticalFault, bool &fault);
 		int sleep();
@@ -296,6 +298,7 @@ class Kestrel: public Sensor
 		time_t cstToUnix(int year, int month, int day, int hour, int minute, int second);
 		uint8_t accelUsed = AccelType::MXC6655; //Default to MXC6655, only change is BMA456 is detected 
 		uint8_t boardVersion = HardwareVersion::PRE_1v9; //Assume pre v1.8 to start
+		bool reportSensors = false; //Default to sensor report being false
 };		
 
 // constexpr uint8_t Kestrel::numTalonPorts; 
