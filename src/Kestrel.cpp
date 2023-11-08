@@ -109,6 +109,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     int accelInitError = accel.begin();
     if(accelInitError == -1) {
         if(bma456.begin() == true) accelUsed = AccelType::BMA456; //If BMA456 detected, switch to that
+        else throwError(ACCEL_INIT_FAIL); //If MXC6655 fails AND BMA456 fails, throw a general fail init error
         // Serial.println("MXC6655 Detect fail!"); //DEBUG!
     }
      
@@ -121,10 +122,11 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
         if(abs(accel.data[0]) < 0.04366 && abs(accel.data[1]) < 0.04366 ) zeroAccel(); //If x and y are < +/- 2.5 degrees, zero the accelerometer Z axis
         // output = output + "\"ACCEL\":[" + String(accel.data[0]) + "," + String(accel.data[1]) + "," + String(accel.data[2]) + "],"; 
     }
-    else {
+    else if(accelInitError != -1 && accelUsed == AccelType::MXC6655) { //If detected (not -1) but some other error, report that 
         throwError(ACCEL_DATA_FAIL | (accelInitError << 8)); //Throw error for failure to communicate with accel, OR error code 
         // output = output + "\"ACCEL\":[null],";
     }
+
     //Read in accel offset from EEPROM. Do this here so it is only done once per reset cycle and is immediately available 
     for(int i = 0; i < 3; i++) { 
         float temp = 0;
