@@ -1502,9 +1502,16 @@ bool Kestrel::testForBat()
     // enableI2C_External(true);
 }
 
+bool Kestrel::releaseWDT()
+{ //Intentionally let the dog off the leash to reset the device
+    bool state = wdtRelease;
+    wdtRelease = true;
+    return state;
+}
+
 bool Kestrel::feedWDT()
 {
-    if(!criticalFault) { //If there is currently no critical fault, feed WDT
+    if(!criticalFault && !wdtRelease) { //If there is currently no critical fault and no release called for, feed WDT
         pinMode(Pins::WD_HOLD, OUTPUT);
         digitalWrite(Pins::WD_HOLD, LOW);
         delay(1);
@@ -1513,6 +1520,10 @@ bool Kestrel::feedWDT()
         digitalWrite(Pins::WD_HOLD, LOW);
         return true;
     } 
+    else if(wdtRelease) {
+        throwError(WDT_OFF_LEASH | 0x100); //Report incoming error 
+        return false;
+    }
     else {
         // System.reset(); //DEBUG!
         throwError(WDT_OFF_LEASH); //Report incoming error 

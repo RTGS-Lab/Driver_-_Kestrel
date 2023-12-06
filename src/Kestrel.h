@@ -160,7 +160,7 @@ struct dateTimeStruct {
 class Kestrel: public Sensor
 {
     constexpr static int MAX_NUM_ERRORS = 10; ///<Maximum number of errors to log before overwriting previous errors in buffer
-	const String FIRMWARE_VERSION = "1.7.4"; //FIX! Read from system??
+	const String FIRMWARE_VERSION = "1.7.5"; //FIX! Read from system??
 	
     const uint32_t KESTREL_PORT_RANGE_FAIL = 0x90010300; ///<Kestrel port assignment is out of range
 	const uint32_t CSA_INIT_FAIL = 0x100500F0; ///<Failure to initialize CSA Alpha or CSA Beta
@@ -233,6 +233,7 @@ class Kestrel: public Sensor
 		bool setIndicatorState(uint8_t ledBank, uint8_t mode);
 		uint8_t updateTime();
 		bool feedWDT();
+		bool releaseWDT();
 		String getPosLat();
 		String getPosLong();
 		String getPosAlt();
@@ -271,6 +272,7 @@ class Kestrel: public Sensor
         // int throwError(uint32_t error);
 		time_t timerStart = 0; //Start time for timer 
 		bool criticalFault = false; 
+		bool wdtRelease = false;
 		bool updateGPS = false; ///<Don't try to update until ready 
 		static Kestrel* selfPointer;
 		static void timechange_handler(system_event_t event, int param);
