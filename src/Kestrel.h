@@ -56,6 +56,7 @@ Distributed as-is; no warranty is given.
 #include "VEML3328/src/VEML3328.h"
 #include <Adafruit_SHT4x.h>
 #include <MXC6655.h>
+#include <arduino_bma456.h>
 // #include <GlobalPins.h>
 
 
@@ -82,6 +83,7 @@ namespace PinsOB {
 	constexpr uint16_t CE = 11;
 	constexpr uint16_t LED_EN = 13;
 	constexpr uint16_t CSA_EN = 14;
+	constexpr uint16_t GPS_INT = 7; 
 }
 
 namespace PinsTalon { //For Kestrel v1.1
@@ -137,6 +139,16 @@ namespace IndicatorMode {
 	
 }
 
+namespace AccelType {
+	constexpr uint8_t MXC6655 = 0;
+	constexpr uint8_t BMA456 = 1;
+}
+
+namespace HardwareVersion {
+	constexpr uint8_t PRE_1v9 = 0;
+	constexpr uint8_t MODEL_1v9 = 1;
+}
+
 struct dateTimeStruct {
 			int year;
 			int month;
@@ -150,17 +162,18 @@ struct dateTimeStruct {
 class Kestrel: public Sensor
 {
     constexpr static int MAX_NUM_ERRORS = 10; ///<Maximum number of errors to log before overwriting previous errors in buffer
-	const String FIRMWARE_VERSION = "1.3.0"; //FIX! Read from system??
+	const String FIRMWARE_VERSION = "1.7.5"; //FIX! Read from system??
 	
     const uint32_t KESTREL_PORT_RANGE_FAIL = 0x90010300; ///<Kestrel port assignment is out of range
 	const uint32_t CSA_INIT_FAIL = 0x100500F0; ///<Failure to initialize CSA Alpha or CSA Beta
 	const uint32_t GPS_INIT_FAIL = 0x100A00F8; ///<Failure to initialize the onboard GPS
 	const uint32_t GPS_READ_FAIL = 0x100B00F8; ///<Failure to read from the onboard GPS
+	// const uint32_t GPS_TIMEOUT = 0xF00C00F8; ///<Timeout ocoured while waiting for GPS to connect (>30 seconds)
 	const uint32_t CELL_FAIL = 0xF00700F6; ///<Failure to connect to cell network
     const uint32_t CLOUD_FAIL = 0xF00800F6; ///<Failure to connect to particle cloud
 	const uint32_t SYSTEM_RESET = 0xF00A0000; ///<Reported on first init, along with reason for reset
 	const uint32_t CLOCK_MISMATCH = 0x700100F0; ///<Mismatch between consensus time and one of the sources 
-	const uint32_t CLOCK_NO_SYNC = 0x500103F0; ///<No two clock sources agree, unable to provide synced time
+	const uint32_t CLOCK_NO_SYNC = 0x500300F0; ///<No two clock sources agree, unable to provide synced time
 	const uint32_t CLOCK_UNAVAILABLE = 0x500400F0; ///<One of the system clocks is unavailable to read from 
 	const uint32_t RTC_OSC_FAIL = 0x500500F5; ///<Failure of local RTC to increment 
 	const uint32_t RTC_POWER_LOSS = 0x54B200F5; ///<Local RTC has encountered power failure 
@@ -173,12 +186,17 @@ class Kestrel: public Sensor
 	const uint32_t ACCEL_INIT_FAIL = 0x100C00F7; ///<Failed to initialize onboard accelerometer 
 	const uint32_t ACCEL_DATA_FAIL = 0x100D00F7; ///<Failed to read data from onboard accelerometer
 	const uint32_t ALARM_FAIL = 0x500600F5; ///<RTC alarm failed to wake device 
+	const uint32_t TIME_DISAGREE = 0x70030000; ///<At least one time source disagrees with the others
+	const uint32_t ALS_INIT_FAIL = 0x101400F7; ///<Failure to initialize the ALS on the Kestrel board
+	const uint32_t ALS_DATA_FAIL = 0x101500F7; ///<Failure to read data from the ALS on the Kestrel board
 
 	const time_t CELL_TIMEOUT = 300000; ///<Amount of time [ms] to wait while trying to connect to cell
     public:
-        Kestrel();
+        Kestrel(bool useSensors = false);
 		SFE_UBLOX_GNSS gps;
         String begin(time_t time, bool &criticalFault, bool &fault);
+		int sleep();
+		int wake();
         bool enablePower(uint8_t port, bool state = true);
         bool enableData(uint8_t port, bool state = true);
 		bool setDirection(uint8_t port, bool sel);
@@ -204,6 +222,7 @@ class Kestrel: public Sensor
 		uint8_t totalErrors() {
 			return numErrors + rtc.numErrors; 
 		}
+		bool updateLocation(bool forceUpdate = false);
 		bool connectToCell();
 
         static constexpr uint8_t numTalonPorts = 5; 
@@ -216,6 +235,7 @@ class Kestrel: public Sensor
 		bool setIndicatorState(uint8_t ledBank, uint8_t mode);
 		uint8_t updateTime();
 		bool feedWDT();
+		bool releaseWDT();
 		String getPosLat();
 		String getPosLong();
 		String getPosAlt();
@@ -237,11 +257,14 @@ class Kestrel: public Sensor
 		Adafruit_SHT4x atmos;
 		MXC6655 accel; 
 
+
 		
 		PCA9634 led;
 		const int ledBrightness = 75; //Default to 75% on
 		const int ledPeriod = 500; //Default to 500ms period
 		const int ledOnTime = 250; //Default to 50% duty cycle
+		const unsigned long sysCollectMax = 300000; //Allow for a max of 5 minutes for collecting info from system
+		const unsigned long loggerCollectMax = 30000; //Allow for a max of 30 seconds for collecting info from logger itself (1 = data, 2 = diagnostic, 3 = metadata)
         // uint32_t errors[MAX_NUM_ERRORS] = {0};
         // uint8_t numErrors = 0; //Used to track the index of errors array
         // bool errorOverwrite = false; //Used to track if errors have been overwritten in time since last report
@@ -251,6 +274,8 @@ class Kestrel: public Sensor
         // int throwError(uint32_t error);
 		time_t timerStart = 0; //Start time for timer 
 		bool criticalFault = false; 
+		bool wdtRelease = false;
+		bool updateGPS = false; ///<Don't try to update until ready 
 		static Kestrel* selfPointer;
 		static void timechange_handler(system_event_t event, int param);
 		static void outOfMemoryHandler(system_event_t event, int param);
@@ -275,6 +300,9 @@ class Kestrel: public Sensor
 		bool initDone = false; //Used to keep track if the initaliztion has run - used by hasReset() 
 		struct tm timeinfo = {0}; //Create struct in C++ time land
 		time_t cstToUnix(int year, int month, int day, int hour, int minute, int second);
+		uint8_t accelUsed = AccelType::MXC6655; //Default to MXC6655, only change is BMA456 is detected 
+		uint8_t boardVersion = HardwareVersion::PRE_1v9; //Assume pre v1.8 to start
+		bool reportSensors = false; //Default to sensor report being false
 };		
 
 // constexpr uint8_t Kestrel::numTalonPorts; 
