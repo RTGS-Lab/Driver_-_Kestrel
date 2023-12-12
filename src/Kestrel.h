@@ -12,6 +12,8 @@ Allows control of all elements of the Kestrel data logger, including IO interfac
 ///////////////////////////////////////////////////////////////////FILL QUOTE////////////////////////////////////////////////////////////////////////////////
 
 Distributed as-is; no warranty is given.
+
+© 2023 Regents of the University of Minnesota. All rights reserved.
 ******************************************************************************/
 /**
  * @file Kestrel.h
