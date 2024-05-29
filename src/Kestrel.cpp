@@ -378,7 +378,13 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
                 // csaAlpha.enableChannel(Channel::CH3, true);
                 // csaAlpha.enableChannel(Channel::CH4, true);
                 for(int i = 0; i < 4; i++){ //Increment through all ports
-                    output = output + String(csaAlpha.getBusVoltage(Channel::CH1 + i, true), 6); //Get bus voltage with averaging 
+                    bool err = false;
+                    float val = csaAlpha.getBusVoltage(Channel::CH1 + i, true, err); //Get bus voltage with averaging 
+                    if(!err) output = output + String(val, 6); //If no error, report as normal
+                    else {
+                        throwError(CSA_OB_READ_FAIL | 0xA00); //Throw read error for CSA A
+                        output = output + "null"; //Otherwise append null
+                    }
                     output = output + ","; //Append comma 
                 }
             }
@@ -388,13 +394,19 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
                 
                 // delay(1000); //Wait for new data //DEBUG!
                 for(int i = 0; i < 4; i++){ //Increment through all ports
-                    output = output + String(csaBeta.getBusVoltage(Channel::CH1 + i, true), 6); //Get bus voltage with averaging 
+                    bool err = false;
+                    float val = csaBeta.getBusVoltage(Channel::CH1 + i, true, err); //Get bus voltage with averaging 
+                    if(!err) output = output + String(val, 6); //If no error, report as normal
+                    else {
+                        throwError(CSA_OB_READ_FAIL | 0xB00); //Throw read error for CSA B
+                        output = output + "null"; //Otherwise append null
+                    }
                     if(i < 3) output = output + ","; //Append comma if not the last reading
                 }
             }
             else {
                 output = output + "null,null,null,null"; //Append nulls if can't connect to csa beta
-                throwError(CSA_INIT_FAIL | 0xB00); //Throw error for ADC beta failure
+                throwError(CSA_OB_INIT_FAIL | 0xB00); //Throw error for ADC beta failure
             }
 
 			output = output + "],"; //Close group
@@ -405,13 +417,19 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
                 // csaAlpha.enableChannel(Channel::CH3, true);
                 // csaAlpha.enableChannel(Channel::CH4, true);
                 for(int i = 0; i < 4; i++){ //Increment through all ports
-                    output = output + String(csaAlpha.getCurrent(Channel::CH1 + i, true), 6); //Get bus voltage with averaging 
+                    bool err = false;
+                    float val = csaAlpha.getCurrent(Channel::CH1 + i, true, err); //Get current with averaging
+                    if(!err) output = output + String(val, 6); //If no error, report as normal
+                    else {
+                        throwError(CSA_OB_READ_FAIL | 0xA00); //Throw read error for CSA A
+                        output = output + "null"; //Otherwise append null
+                    }
                     output = output + ","; //Append comma 
                 }
             }
             else {
                 output = output + "null,null,null,null,"; //Append nulls if can't connect to csa alpha
-                throwError(CSA_INIT_FAIL | 0xA00); //Throw error for ADC failure
+                throwError(CSA_OB_INIT_FAIL | 0xA00); //Throw error for ADC failure
             }
 
 			if(initB == true) {
@@ -420,13 +438,19 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
                 // csaBeta.enableChannel(Channel::CH3, true);
                 // csaBeta.enableChannel(Channel::CH4, true);
                 for(int i = 0; i < 4; i++){ //Increment through all ports
-                    output = output + String(csaBeta.getCurrent(Channel::CH1 + i, true), 6); //Get bus voltage with averaging 
+                    bool err = false;
+                    float val = csaBeta.getCurrent(Channel::CH1 + i, true, err); //Get current with averaging
+                    if(!err) output = output + String(val, 6); //If no error, report as normal
+                    else {
+                        throwError(CSA_OB_READ_FAIL | 0xB00); //Throw read error for CSA B
+                        output = output + "null"; //Otherwise append null
+                    }
                     if(i < 3) output = output + ","; //Append comma if not the last reading
                 }
             }
             else {
                 output = output + "null,null,null,null"; //Append nulls if can't connect to csa beta
-                throwError(CSA_INIT_FAIL | 0xB00); //Throw error for ADC failure
+                throwError(CSA_OB_INIT_FAIL | 0xB00); //Throw error for ADC failure
             }
 			output = output + "],"; //Close group
             output = output + "\"AVG_P\":["; //Open group
@@ -436,13 +460,19 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
             }
             if(initA == true) {
                 for(int i = 0; i < 4; i++){ //Increment through all ports
-                    output = output + String(csaAlpha.getPowerAvg(Channel::CH1 + i)); //Get bus voltage with averaging 
+                    bool err = false;
+                    float val = csaAlpha.getPowerAvg(Channel::CH1 + i, err); //Get bus power
+                    if(!err) output = output + String(val); //If no error, report as normal
+                    else {
+                        throwError(CSA_OB_READ_FAIL | 0xA00); //Throw read error for CSA A
+                        output = output + "null"; //Otherwise append null
+                    }
                     if(i < 3) output = output + ","; //Append comma if not the last reading
                 }
             }
             else {
                 output = output + "null,null,null,null"; //Append nulls if can't connect to csa alpha
-                throwError(CSA_INIT_FAIL | 0xA00); //Throw error for ADC failure
+                throwError(CSA_OB_INIT_FAIL | 0xA00); //Throw error for ADC failure
             }
             output = output + "],"; //Close group
             output = output + "\"LAST_CLR\":" + String((int)lastAccReset) + ","; //Append the time of the last accumulator clear
@@ -454,7 +484,7 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 		}
 		else { //If unable to initialzie ADC
 			output = output + "\"PORT_V\":[null],\"PORT_I\":[null],\"AVG_P\":[null],";
-			throwError(CSA_INIT_FAIL); //Throw error for global CSA failure
+			throwError(CSA_OB_INIT_FAIL); //Throw error for global CSA failure
 		}
         output = output + "\"ALS\":";
         int error = als.begin();
@@ -1591,7 +1621,7 @@ int Kestrel::sleep()
     SystemSleepConfiguration config;
     // SystemSleepResult result;
     switch(powerSaveMode) {
-        case PowerSaveModes::PERFROMANCE:
+        case PowerSaveModes::PERFORMANCE:
             return 0; //Nothing to do for performance mode 
             break; 
         case PowerSaveModes::BALANCED:
@@ -1713,7 +1743,7 @@ int Kestrel::sleep()
 int Kestrel::wake()
 {
     switch(powerSaveMode) {
-        case PowerSaveModes::PERFROMANCE:
+        case PowerSaveModes::PERFORMANCE:
             return 0; //Nothing to do for performance mode 
             break; 
         case PowerSaveModes::BALANCED:

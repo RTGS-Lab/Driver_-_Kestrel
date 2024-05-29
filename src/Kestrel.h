@@ -165,7 +165,8 @@ class Kestrel: public Sensor
 	const String FIRMWARE_VERSION = "1.7.5"; //FIX! Read from system??
 	
     const uint32_t KESTREL_PORT_RANGE_FAIL = 0x90010300; ///<Kestrel port assignment is out of range
-	const uint32_t CSA_INIT_FAIL = 0x100500F0; ///<Failure to initialize CSA Alpha or CSA Beta
+	const uint32_t CSA_OB_INIT_FAIL = 0x100500F7; ///<Failure to initialize CSA Alpha or CSA Beta
+	const uint32_t CSA_OB_READ_FAIL = 0x101600F7; ///<Failure to initialize CSA Alpha or CSA Beta
 	const uint32_t GPS_INIT_FAIL = 0x100A00F8; ///<Failure to initialize the onboard GPS
 	const uint32_t GPS_READ_FAIL = 0x100B00F8; ///<Failure to read from the onboard GPS
 	// const uint32_t GPS_TIMEOUT = 0xF00C00F8; ///<Timeout ocoured while waiting for GPS to connect (>30 seconds)
