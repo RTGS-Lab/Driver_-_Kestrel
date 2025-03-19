@@ -50,7 +50,7 @@ Distributed as-is; no warranty is given.
 #include <PCAL9535A.h>
 #include "PCA9634/src/PCA9634.h"
 // #include "MCP7940_Library/src/MCP7940.h"
-#include "DRIVER_-_MCP79412/src/MCP79412.h"
+#include "Driver_-_MCP79412/src/MCP79412.h"
 #include "SparkFun_u-blox_GNSS_Arduino_Library/src/SparkFun_u-blox_GNSS_Arduino_Library.h"
 #include "PAC1932_Library/src/PAC1934.h"
 #include "VEML3328/src/VEML3328.h"
