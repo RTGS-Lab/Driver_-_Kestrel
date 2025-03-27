@@ -194,6 +194,7 @@ class Kestrel: public Sensor
 	const time_t CELL_TIMEOUT = 300000; ///<Amount of time [ms] to wait while trying to connect to cell
     public:
         Kestrel(bool useSensors = false);
+		Kestrel(PCAL9535A ioOB, PCAL9535A ioTalon, MCP79412 rtc, PAC1934 csaAlpha, PAC1934 csaBeta, VEML3328 als, Adafruit_SHT4x atmos, MXC6655 accel, PCA9634 led, SFE_UBLOX_GNSS gps, bool useSensors = false);
 		SFE_UBLOX_GNSS gps;
         String begin(time_t time, bool &criticalFault, bool &fault);
 		int sleep();
