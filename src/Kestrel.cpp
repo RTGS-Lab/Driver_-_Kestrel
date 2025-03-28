@@ -19,7 +19,7 @@ Distributed as-is; no warranty is given.
 
 Kestrel* Kestrel::selfPointer;
 
-Kestrel::Kestrel(bool useSensors) : ioOB(0x20), ioTalon(0x21), led(0x52), csaAlpha(2, 2, 2, 2, 0x18), csaBeta(2, 10, 10, 10, 0x14)
+Kestrel::Kestrel(ITimeProvider& timeProvider, bool useSensors) : ioOB(0x20), ioTalon(0x21), led(0x52), csaAlpha(2, 2, 2, 2, 0x18), csaBeta(2, 10, 10, 10, 0x14), m_timeProvider(timeProvider)
 {
 	// port = talonPort; //Copy to local
 	// version = hardwareVersion; //Copy to local
@@ -841,12 +841,12 @@ uint8_t Kestrel::updateTime()
     }
     // if(Time.isValid()) { //If particle time is valid, set from this
     currentDateTime.source = timeSource; //sync time and record source of current time
-    currentDateTime.year = Time.year();
-    currentDateTime.month = Time.month();
-    currentDateTime.day = Time.day();
-    currentDateTime.hour = Time.hour();
-    currentDateTime.minute = Time.minute();
-    currentDateTime.second = Time.second();
+    currentDateTime.year = m_timeProvider.year();
+    currentDateTime.month = m_timeProvider.month();
+    currentDateTime.day = m_timeProvider.day();
+    currentDateTime.hour = m_timeProvider.hour();
+    currentDateTime.minute = m_timeProvider.minute();
+    currentDateTime.second = m_timeProvider.second();
     
     return currentDateTime.source; //debug!
     // }
@@ -885,7 +885,7 @@ uint8_t Kestrel::syncTime(bool force)
     
     
     //Grab Particle RTC time and expected time from millis delta
-    time_t particleTime = Time.isValid() ? Time.now() : 0; //Set to current time if valid, if not, set to 0
+    time_t particleTime = m_timeProvider.isValid() ? m_timeProvider.now() : 0; //Set to current time if valid, if not, set to 0
     times[numClockSources - 1] = particleTime; //Grab current particle RTC time
 
     if(particleTime == 0) throwError(CLOCK_UNAVAILABLE); //If time is not valid, throw system wide error for base clock
@@ -933,13 +933,13 @@ uint8_t Kestrel::syncTime(bool force)
         waitFor(Particle.syncTimePending, 500); //Wait up to 0.5 seconds for system to assert a syncTime
         waitFor(Particle.syncTimeDone, 10000); //Wait until sync is done, at most 10 seconds //FIX!
         if(Particle.syncTimeDone()) { //Make sure sync time was actually completed 
-            Time.zone(0); //Set to UTC 
-            cellTime = Time.now();
+            m_timeProvider.zone(0); //Set to UTC 
+            cellTime = m_timeProvider.now();
             // timeSyncRequested = false; //Release control of time sync override 
             Serial.print("Cell Time: "); 
             Serial.println(cellTime);
             sourceAvailable[TimeSource::CELLULAR] = true; 
-            times[TimeSource::CELLULAR] = Time.now(); //Grab last time
+            times[TimeSource::CELLULAR] = m_timeProvider.now(); //Grab last time
         }
         else {
             sourceAvailable[TimeSource::CELLULAR] = false;
@@ -1108,8 +1108,8 @@ uint8_t Kestrel::syncTime(bool force)
                 if(abs(times[remoteSource] - times[t]) < maxTimeError && t != remoteSource) { //If available time matches with another time (2 times agree) that is not iself, proceed with the time set
                     timeSourceB = t; //Record secondary source
                     Serial.println("SET PARTICLE RTC"); //DEBUG!
-                    Time.setTime(times[remoteSource]);  //Set 
-                    rtc.setTime(Time.year(times[remoteSource]), Time.month(times[remoteSource]), Time.day(times[remoteSource]), Time.hour(times[remoteSource]), Time.minute(times[remoteSource]), Time.second(times[remoteSource]));
+                    m_timeProvider.setTime(times[remoteSource]);  //Set 
+                    rtc.setTime(Time.year(times[remoteSource]), m_timeProvider.month(times[remoteSource]), m_timeProvider.day(times[remoteSource]), m_timeProvider.hour(times[remoteSource]), m_timeProvider.minute(times[remoteSource]), m_timeProvider.second(times[remoteSource]));
                     timeGood = true; //Assert flag after time set
                     break; //Exit after the highest tier is used
                 }
@@ -1117,8 +1117,8 @@ uint8_t Kestrel::syncTime(bool force)
             if(!timeGood) { //If no matching time found, set to none and set time anyway
                 timeSourceB = TimeSource::NONE; //Set even if find no agreeing time
                 Serial.println("SET PARTICLE RTC"); //DEBUG!
-                Time.setTime(times[remoteSource]);  //Set
-                rtc.setTime(Time.year(times[remoteSource]), Time.month(times[remoteSource]), Time.day(times[remoteSource]), Time.hour(times[remoteSource]), Time.minute(times[remoteSource]), Time.second(times[remoteSource]));
+                m_timeProvider.setTime(times[remoteSource]);  //Set
+                rtc.setTime(Time.year(times[remoteSource]), m_timeProvider.month(times[remoteSource]), m_timeProvider.day(times[remoteSource]), m_timeProvider.hour(times[remoteSource]), m_timeProvider.minute(times[remoteSource]), m_timeProvider.second(times[remoteSource]));
             }
 
         }
@@ -1130,9 +1130,9 @@ uint8_t Kestrel::syncTime(bool force)
                         if(abs(times[i] - times[t]) < maxTimeError && t != i) { //If available time matches with another time (2 times agree) that is not iself, proceed with the time set
                             timeSourceB = t; //Record secondary source
                             Serial.println("SET PARTICLE RTC"); //DEBUG!
-                            Time.setTime(times[i]);  //Set 
+                            m_timeProvider.setTime(times[i]);  //Set 
                             if(timeSourceA <= TimeSource::CELLULAR) { //If a tier 1 or 2 value is used, also update the kestrel RTC
-                                rtc.setTime(Time.year(times[i]), Time.month(times[i]), Time.day(times[i]), Time.hour(times[i]), Time.minute(times[i]), Time.second(times[i]));
+                                rtc.setTime(Time.year(times[i]), m_timeProvider.month(times[i]), m_timeProvider.day(times[i]), m_timeProvider.hour(times[i]), m_timeProvider.minute(times[i]), m_timeProvider.second(times[i]));
                             }
                             timeGood = true; //Assert flag after time set
                             break; //Exit after the highest tier is used
@@ -1152,8 +1152,8 @@ uint8_t Kestrel::syncTime(bool force)
             throwError(CLOCK_NO_SYNC); //Report lack of sync as error 
         }
         if(timeFix > 0 && timeGood == true) { //Update for increment
-            lastTimeSync = Time.now(); //Update time of last sync
-            previousTime = Time.now(); //Grab updated time before exiting
+            lastTimeSync = m_timeProvider.now(); //Update time of last sync
+            previousTime = m_timeProvider.now(); //Grab updated time before exiting
             previousMillis = millis(); //Grab millis before exiting
         }
         else lastTimeSync = 0; //Otherwise indiciate sync failed
@@ -1174,8 +1174,8 @@ uint8_t Kestrel::syncTime(bool force)
 
     // if(abs(cellTime - gpsTime) < maxTimeError && gpsTime != 0 && cellTime != 0) { //If both remote variables match, update the time no mater what the state of the rest are
     //     Serial.println("CLOCK SOURCE: GPS and Cell match");
-    //     // time_t currentTime = Time.now(); //Ensure sync and that local offset is not applied 
-    //     // rtc.setTime(Time.year(currentTime), Time.month(currentTime), Time.day(currentTime), Time.hour(currentTime), Time.minute(currentTime), Time.second(currentTime)); //Set RTC from Cell
+    //     // time_t currentTime = m_timeProvider.now(); //Ensure sync and that local offset is not applied 
+    //     // rtc.setTime(Time.year(currentTime), m_timeProvider.month(currentTime), m_timeProvider.day(currentTime), m_timeProvider.hour(currentTime), m_timeProvider.minute(currentTime), m_timeProvider.second(currentTime)); //Set RTC from Cell
     //     if(cellTime != 0) { //DEBUG! RESTORE!
     //         time_t currentTime = cellTime; //Grab time from cell, even though it is old, to ensure correct time is being set //FIX!
     //         Serial.print("RTC Set Time: "); //DEBUG!
@@ -1184,7 +1184,7 @@ uint8_t Kestrel::syncTime(bool force)
     //         Serial.print(Time.minute(currentTime));
     //         Serial.print(":");
     //         Serial.println(Time.second(currentTime));
-    //         rtc.setTime(Time.year(currentTime), Time.month(currentTime), Time.day(currentTime), Time.hour(currentTime), Time.minute(currentTime), Time.second(currentTime)); //Set RTC from Cell
+    //         rtc.setTime(Time.year(currentTime), m_timeProvider.month(currentTime), m_timeProvider.day(currentTime), m_timeProvider.hour(currentTime), m_timeProvider.minute(currentTime), m_timeProvider.second(currentTime)); //Set RTC from Cell
     //     }
         
     //     timeGood = true;
@@ -1201,7 +1201,7 @@ uint8_t Kestrel::syncTime(bool force)
     // }
     // else if(abs(gpsTime - rtcTime) < maxTimeError && gpsTime != 0 && rtcTime != 0) { //If gps and rtc agree
     //     Serial.println("CLOCK SOURCE: GPS and local match");
-    //     Time.setTime(gpsTime); //Set particle time from GPS time
+    //     m_timeProvider.setTime(gpsTime); //Set particle time from GPS time
     //     //Throw error
     //     timeGood = true;
     //     source = TimeSource::GPS;
@@ -1211,7 +1211,7 @@ uint8_t Kestrel::syncTime(bool force)
         
     //     if(rtcTime > 1641016800) { //Jan 1, 2022, date seems to be reeasonable //FIX!
     //         Serial.println("CLOCK SOURCE: Stale RTC"); //DEBUG!
-    //         Time.setTime(rtc.getTimeUnix()); //Set time from RTC   
+    //         m_timeProvider.setTime(rtc.getTimeUnix()); //Set time from RTC   
     //         timeGood = true;
     //         source = TimeSource::RTC;
     //         //Throw mismatch errors as needed //FIX!??
@@ -1222,7 +1222,7 @@ uint8_t Kestrel::syncTime(bool force)
     //         Serial.println("CLOCK SOURCE: NONE"); //DEBUG!
     //         criticalFault = true; //FIX??
     //         timeGood = false; 
-    //         Time.setTime(946684800); //Set time back to year 2000
+    //         m_timeProvider.setTime(946684800); //Set time back to year 2000
     //         source = TimeSource::NONE;
     //     }
     //     throwError(CLOCK_NO_SYNC); //Throw error regardless of which state, because no two sources are able to agree we have a sync failure 
@@ -1239,7 +1239,7 @@ uint8_t Kestrel::syncTime(bool force)
     Serial.print("Timebase End: "); //DEBUG!
     Serial.println(millis());
     // if(timeGood == true) {
-    //     previousTime = Time.now(); //Grab updated time before exiting
+    //     previousTime = m_timeProvider.now(); //Grab updated time before exiting
     //     previousMillis = millis(); //Grab millis before exiting
     // }
     return source;
@@ -1251,9 +1251,9 @@ time_t Kestrel::getTime()
         syncTime();
     }
     if(Time.isValid() && timeGood) { //If time is good, report current value
-        return Time.now();
+        return m_timeProvider.now();
     }
-    // return Time.now();
+    // return m_timeProvider.now();
     //THROW ERROR! //FIX!
     return 0; //DEBUG! //If time is not valid, return failure value
 }
