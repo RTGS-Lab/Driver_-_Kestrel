@@ -60,7 +60,7 @@ Distributed as-is; no warranty is given.
 // #include <GlobalPins.h>
 
 #include "../../FlightControl-platform-dependencies/src/ITimeProvider.h"
-
+#include "../../FlightControl-platform-dependencies/src/IGpio.h"
 
 namespace Pins { //Use for B402
 	constexpr uint16_t WD_HOLD  = D2;
@@ -195,6 +195,7 @@ class Kestrel: public Sensor
 	const time_t CELL_TIMEOUT = 300000; ///<Amount of time [ms] to wait while trying to connect to cell
     public:
         Kestrel(ITimeProvider& timeProvider,
+				IGpio& gpio,
 				bool useSensors = false);
 		SFE_UBLOX_GNSS gps;
         String begin(time_t time, bool &criticalFault, bool &fault);
@@ -252,6 +253,7 @@ class Kestrel: public Sensor
 
     private:
 		ITimeProvider& m_timeProvider;
+		IGpio& m_gpio;
 		
         PCAL9535A ioOB;
         PCAL9535A ioTalon;

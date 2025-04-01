@@ -19,7 +19,9 @@ Distributed as-is; no warranty is given.
 
 Kestrel* Kestrel::selfPointer;
 
-Kestrel::Kestrel(ITimeProvider& timeProvider, bool useSensors) : ioOB(0x20), ioTalon(0x21), led(0x52), csaAlpha(2, 2, 2, 2, 0x18), csaBeta(2, 10, 10, 10, 0x14), m_timeProvider(timeProvider)
+Kestrel::Kestrel(ITimeProvider& timeProvider, 
+                 IGpio& gpio,
+                 bool useSensors) : ioOB(0x20), ioTalon(0x21), led(0x52), csaAlpha(2, 2, 2, 2, 0x18), csaBeta(2, 10, 10, 10, 0x14), m_timeProvider(timeProvider), m_gpio(gpio)
 {
 	// port = talonPort; //Copy to local
 	// version = hardwareVersion; //Copy to local
@@ -69,7 +71,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     }
     Serial1.begin(1200, SERIAL_8N1); //Initialize SDI12 serial port //DEBUG! - Used to fix wakeup issue
     // setIndicatorState(IndicatorLight::ALL,IndicatorMode::WAITING); //Set all to blinking wait
-    pinMode(Pins::Clock_INT, INPUT); //Make sure interrupt pin is always an input
+    m_gpio.pinMode(Pins::Clock_INT, IPinMode::INPUT); //Make sure interrupt pin is always an input
     if(rtc.begin(true) == 0) criticalFault = true; //Use with external oscilator, set critical fault if not able to connect 
     else {
         rtc.enableAlarm(false, 0); //Disable all alarms on startup //DEBUG! Use to prevent alarm 1 from ever being activated 
@@ -553,7 +555,7 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
         }
 
 		// ioSense.digitalWrite(pinsSense::MUX_EN, HIGH); //Turn MUX back off 
-		// digitalWrite(KestrelPins::PortBPins[talonPort], LOW); //Return to default external connecton
+		// m_gpio.digitalWrite(KestrelPins::PortBPins[talonPort], LOW); //Return to default external connecton
         temperatureString = temperatureString + "]";
         output = output + "\"SIV\":" + String(gps.getSIV()) + ",\"FIX\":" + String(gps.getFixType()) + ",";
 		output = output + temperatureString + ","; 
@@ -745,18 +747,18 @@ bool Kestrel::getFault(uint8_t port)
 
 bool Kestrel::enableI2C_OB(bool state)
 {
-    bool currentState = digitalRead(Pins::I2C_OB_EN); 
-    pinMode(Pins::I2C_OB_EN, OUTPUT);
-	digitalWrite(Pins::I2C_OB_EN, state);
+    bool currentState = m_gpio.digitalRead(Pins::I2C_OB_EN); 
+    m_gpio.pinMode(Pins::I2C_OB_EN, IPinMode::OUTPUT);
+	m_gpio.digitalWrite(Pins::I2C_OB_EN, state);
     // Wire.reset(); //DEBUG!
     return currentState; 
 }
 
 bool Kestrel::enableI2C_Global(bool state)
 {
-    bool currentState = digitalRead(Pins::I2C_GLOBAL_EN); 
-    pinMode(Pins::I2C_GLOBAL_EN, OUTPUT);
-	digitalWrite(Pins::I2C_GLOBAL_EN, state);
+    bool currentState = m_gpio.digitalRead(Pins::I2C_GLOBAL_EN); 
+    m_gpio.pinMode(Pins::I2C_GLOBAL_EN, IPinMode::OUTPUT);
+	m_gpio.digitalWrite(Pins::I2C_GLOBAL_EN, state);
     // Wire.reset(); //DEBUG!
     return currentState; 
 }
@@ -1322,11 +1324,11 @@ bool Kestrel::waitUntilTimerDone()
     Serial.print("Time Now: "); //DEBUG!
     Serial.println(m_timeProvider.millis());
     
-    while(digitalRead(Pins::Clock_INT) == HIGH && ((m_timeProvider.millis() - timerStart) < (logPeriod*1000 + 500))){ //Wait until either timer has expired or clock interrupt has gone off //DEBUG! Give 500 ms cushion for testing RTC
+    while(m_gpio.digitalRead(Pins::Clock_INT) == HIGH && ((m_timeProvider.millis() - timerStart) < (logPeriod*1000 + 500))){ //Wait until either timer has expired or clock interrupt has gone off //DEBUG! Give 500 ms cushion for testing RTC
         m_timeProvider.delay(1); 
         Particle.process(); //Run process continually while waiting in order to make sure device is responsive 
     } 
-    if(digitalRead(Pins::Clock_INT) == LOW) return true; //If RTC triggers properly, return true, else return false 
+    if(m_gpio.digitalRead(Pins::Clock_INT) == LOW) return true; //If RTC triggers properly, return true, else return false 
     else {
         throwError(ALARM_FAIL); //Throw alarm error since RTC did not wake device 
         return false; 
@@ -1543,12 +1545,12 @@ bool Kestrel::releaseWDT()
 bool Kestrel::feedWDT()
 {
     if(!criticalFault && !wdtRelease) { //If there is currently no critical fault and no release called for, feed WDT
-        pinMode(Pins::WD_HOLD, OUTPUT);
-        digitalWrite(Pins::WD_HOLD, LOW);
+        m_gpio.pinMode(Pins::WD_HOLD, IPinMode::OUTPUT);
+        m_gpio.digitalWrite(Pins::WD_HOLD, LOW);
         m_timeProvider.delay(1);
-        digitalWrite(Pins::WD_HOLD, HIGH);
+        m_gpio.digitalWrite(Pins::WD_HOLD, HIGH);
         m_timeProvider.delay(1);
-        digitalWrite(Pins::WD_HOLD, LOW);
+        m_gpio.digitalWrite(Pins::WD_HOLD, LOW);
         return true;
     } 
     else if(wdtRelease) {
@@ -1704,7 +1706,7 @@ int Kestrel::sleep()
     Serial.flush();
     m_timeProvider.delay(5000); //DEBUG!
     __set_FPSCR(fpscr & ~0x7); //Clear error bits to prevent assertion failure 
-    if(digitalRead(Pins::Clock_INT) != LOW) {
+    if(m_gpio.digitalRead(Pins::Clock_INT) != LOW) {
         SystemSleepResult result = System.sleep(config); //If clock not triggered already, go to sleep
         if(powerSaveMode == PowerSaveModes::LOW_POWER) { //Deal with extended sleep periods in low power mode
             m_timeProvider.delay(5000); //DEBUG!
