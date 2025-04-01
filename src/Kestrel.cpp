@@ -21,7 +21,8 @@ Kestrel* Kestrel::selfPointer;
 
 Kestrel::Kestrel(ITimeProvider& timeProvider, 
                  IGpio& gpio,
-                 bool useSensors) : ioOB(0x20), ioTalon(0x21), led(0x52), csaAlpha(2, 2, 2, 2, 0x18), csaBeta(2, 10, 10, 10, 0x14), m_timeProvider(timeProvider), m_gpio(gpio)
+                 ISystem& system,
+                 bool useSensors) : ioOB(0x20), ioTalon(0x21), led(0x52), csaAlpha(2, 2, 2, 2, 0x18), csaBeta(2, 10, 10, 10, 0x14), m_timeProvider(timeProvider), m_gpio(gpio), m_system(system)
 {
 	// port = talonPort; //Copy to local
 	// version = hardwareVersion; //Copy to local
@@ -33,8 +34,8 @@ Kestrel::Kestrel(ITimeProvider& timeProvider,
 String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
 {
     selfPointer = this;
-    System.on(time_changed, timechange_handler);
-    System.on(out_of_memory, outOfMemoryHandler);
+    m_system.on(IEventType::TIME_CHANGED, timechange_handler);
+    m_system.on(IEventType::OUT_OF_MEMORY, outOfMemoryHandler);
     // #if defined(ARDUINO) && ARDUINO >= 100 
 		// Wire.begin();
         // Wire.setClock(100000); //Confirm operation in fast mode
@@ -42,7 +43,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
 		if(!Wire.isEnabled()) Wire.begin(); //Only initialize I2C if not done already //INCLUDE FOR USE WITH PARTICLE 
         Wire.setClock(400000);
 	// #endif
-    if(!initDone) throwError(SYSTEM_RESET | ((System.resetReason() << 8) & 0xFF00)); //Throw reset error with reason for reset as subtype. Truncate resetReason to one byte. This will include all predefined reasons, but will prevent issues if user returns some large (technically can be up to 32 bits) custom reset reason
+    if(!initDone) throwError(SYSTEM_RESET | ((static_cast<uint32_t>(m_system.resetReason()) << 8) & 0xFF00)); //Throw reset error with reason for reset as subtype. Truncate resetReason to one byte. This will include all predefined reasons, but will prevent issues if user returns some large (technically can be up to 32 bits) custom reset reason
     bool globState = enableI2C_Global(false); //Turn off external I2C
     bool obState = enableI2C_OB(true); //Turn on internal I2C
     if(ioOB.begin() != 0) criticalFault = true;
@@ -259,8 +260,8 @@ String Kestrel::getMetadata()
     metadata = metadata + "\"RTC UUID\":" + rtcUUID + ","; //Append RTC UUID
 
     /////// Particle info //////////// 
-    // metadata = metadata + "\"OS\":\"" + System.version() + "\",";
-    // metadata = metadata + "\"ID\":\"" + System.deviceID() + "\",";
+    // metadata = metadata + "\"OS\":\"" + m_system.version() + "\",";
+    // metadata = metadata + "\"ID\":\"" + m_system.deviceID() + "\",";
     if(PLATFORM_ID == PLATFORM_BSOM) metadata = metadata + "\"Model\":\"BSoM\","; //Report BSoM
     else if (PLATFORM_ID == PLATFORM_B5SOM) metadata = metadata + "\"Model\":\"B5SoM\","; //Report B5SoM
     else metadata = metadata + "\"Model\":null,"; //Report null if for some reason the firmware is running on another device 
@@ -566,12 +567,12 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 
 	if(diagnosticLevel <= 5) {
 		// output = output + "\"lvl-5\":{"; //OPEN JSON BLOB
-        if(System.freeMemory() < 15600) { //Throw error if RAM usage >90% //FIX! Check dynamically for amount of RAM available based on OS, etc 
+        if(m_system.freeMemory() < 15600) { //Throw error if RAM usage >90% //FIX! Check dynamically for amount of RAM available based on OS, etc 
             throwError(RAM_CRITICAL); 
             criticalFault = true; //Let WDT off leash to fix issue
         }
-        else if(System.freeMemory() < 46800) throwError(RAM_LOW); //Throw error if RAM usage >75% //FIX! Check dynamically for amount of RAM available based on OS, etc 
-        output = output + "\"Free Mem\":" + String(System.freeMemory()) + ","; //DEBUG! Move to higher level later on
+        else if(m_system.freeMemory() < 46800) throwError(RAM_LOW); //Throw error if RAM usage >75% //FIX! Check dynamically for amount of RAM available based on OS, etc 
+        output = output + "\"Free Mem\":" + String(m_system.freeMemory()) + ","; //DEBUG! Move to higher level later on
         output = output + "\"Time Fix\":" + String(timeFix) + ","; //Append time sync value
         output = output + "\"Time Source\":[\"" + sourceNames[timeSourceA] + "\",\"" + sourceNames[timeSourceB] + "\"],"; //Report the time souce selected from the last sync
         output = output + "\"Times\":{\"LOCAL\":" + String((int)times[numClockSources - 1]) + ","; //Always have current time listed 
@@ -1558,7 +1559,7 @@ bool Kestrel::feedWDT()
         return false;
     }
     else {
-        // System.reset(); //DEBUG!
+        // m_system.reset(); //DEBUG!
         throwError(WDT_OFF_LEASH); //Report incoming error 
         return false;
     }
@@ -1638,8 +1639,8 @@ int Kestrel::sleep()
             led.sleep(true); //Put LED driver into low power mode 
             if(!gps.powerOffWithInterrupt(3600000, VAL_RXM_PMREQ_WAKEUPSOURCE_EXTINT0)) throwError(GPS_READ_FAIL); //Shutdown for an hour unless woken up via pin trip
 
-            // result = System.sleep(config);
-            // System.sleep(config); //DEBUG!
+            // result = m_system.sleep(config);
+            // m_system.sleep(config); //DEBUG!
             break;
         case PowerSaveModes::LOW_POWER:
             // Particle.disconnect(CloudDisconnectOptions().graceful(true).timeout(30s)); //Disconnect from cloud and make sure messages are sent first
@@ -1655,8 +1656,8 @@ int Kestrel::sleep()
             led.sleep(true); //Put LED driver into low power mode  
             // gps.powerOffWithInterrupt(3600000, VAL_RXM_PMREQ_WAKEUPSOURCE_EXTINT0); //Shutdown for an hour unless woken up via pin trip
 
-            // result = System.sleep(config);
-            // System.sleep(config); //DEBUG!
+            // result = m_system.sleep(config);
+            // m_system.sleep(config); //DEBUG!
             break;
         case PowerSaveModes::ULTRA_LOW_POWER:
             Particle.disconnect(CloudDisconnectOptions().graceful(true).timeout(30s)); //Disconnect from cloud and make sure messages are sent first
@@ -1707,18 +1708,18 @@ int Kestrel::sleep()
     m_timeProvider.delay(5000); //DEBUG!
     __set_FPSCR(fpscr & ~0x7); //Clear error bits to prevent assertion failure 
     if(m_gpio.digitalRead(Pins::Clock_INT) != LOW) {
-        SystemSleepResult result = System.sleep(config); //If clock not triggered already, go to sleep
+        IWakeupReason result = m_system.sleep(config); //If clock not triggered already, go to sleep
         if(powerSaveMode == PowerSaveModes::LOW_POWER) { //Deal with extended sleep periods in low power mode
             m_timeProvider.delay(5000); //DEBUG!
             Serial.print("WAKE! - "); //DEBUG!
-            Serial.print(static_cast<int>(result.wakeupReason())); //DEBUG!
+            Serial.print(static_cast<int>(result)); //DEBUG!
             Serial.print("\t");
             Serial.println(m_timeProvider.millis()); //DEBUG!
             Serial.flush(); //DEBUG!
 
             int wakeupCount = 0; //Count how many times in a row the system is woken up by the timer
-            while((result.wakeupReason() == SystemSleepWakeupReason::BY_RTC || result.wakeupReason() == SystemSleepWakeupReason::BY_NETWORK) && wakeupCount < 16) { //FIX! Make variable 
-                if(result.wakeupReason() == SystemSleepWakeupReason::BY_RTC) {
+            while((result == IWakeupReason::BY_RTC || result == IWakeupReason::BY_NETWORK) && wakeupCount < 16) { //FIX! Make variable 
+                if(result == IWakeupReason::BY_RTC) {
                     Particle.connect();
                     waitFor(Particle.connected, 5000); //Wait for a max of 5 seconds for particle to connect
                     // Particle.publish("DUMMY"); //DEBUG!
@@ -1728,11 +1729,11 @@ int Kestrel::sleep()
                 Serial.println("Wakeup Attemp Done - return to sleep"); //DEBUG!
                 Serial.flush(); //DEBUG!
                 waitFor(Particle.connected, 5000);
-                result = System.sleep(config); //Go back to sleep after re-connecting
+                result = m_system.sleep(config); //Go back to sleep after re-connecting
             }
         }
         if(powerSaveMode == PowerSaveModes::BALANCED) {
-            if(result.wakeupReason() == SystemSleepWakeupReason::BY_RTC) throwError(ALARM_FAIL | 0x100); //Throw error due to wake from timer not clock int 
+            if(result == IWakeupReason::BY_RTC) throwError(ALARM_FAIL | 0x100); //Throw error due to wake from timer not clock int 
         }
     }
     else {
@@ -1850,13 +1851,13 @@ int Kestrel::wake()
     return 1; //DEBUG!
 }
 
-void Kestrel::timechange_handler(system_event_t event, int param)
+void Kestrel::timechange_handler(IEventType event, int param)
 {
     // Serial.print("Time Change Handler: "); //DEBUG!
     // Serial.print(event); //DEBUG!
     // Serial.print("\t");
     // Serial.println(param); //DEBUG!
-    if(event == time_changed) { //Confirm event type before proceeding 
+    if(event == IEventType::TIME_CHANGED) { //Confirm event type before proceeding 
         if(param == time_changed_sync && !(selfPointer->initDone)) { 
             Serial.println("TIME CHANGE: Updating"); //DEBUG!
             // selfPointer->syncTime(); //if time update not from manual sync (and sync not requested), call time sync to return to desired val
@@ -1873,7 +1874,7 @@ void Kestrel::timechange_handler(system_event_t event, int param)
     }
 }
 
-void Kestrel::outOfMemoryHandler(system_event_t event, int param) {
+void Kestrel::outOfMemoryHandler(IEventType event, int param) {
     // outOfMemory = param;
     selfPointer->throwError(selfPointer->RAM_FULL); //Report RAM usage
     selfPointer->criticalFault = true; //Let WDT off leash

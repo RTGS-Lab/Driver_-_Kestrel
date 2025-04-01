@@ -61,6 +61,7 @@ Distributed as-is; no warranty is given.
 
 #include "../../FlightControl-platform-dependencies/src/ITimeProvider.h"
 #include "../../FlightControl-platform-dependencies/src/IGpio.h"
+#include "../../FlightControl-platform-dependencies/src/ISystem.h"
 
 namespace Pins { //Use for B402
 	constexpr uint16_t WD_HOLD  = D2;
@@ -196,6 +197,7 @@ class Kestrel: public Sensor
     public:
         Kestrel(ITimeProvider& timeProvider,
 				IGpio& gpio,
+				ISystem& system,
 				bool useSensors = false);
 		SFE_UBLOX_GNSS gps;
         String begin(time_t time, bool &criticalFault, bool &fault);
@@ -254,6 +256,7 @@ class Kestrel: public Sensor
     private:
 		ITimeProvider& m_timeProvider;
 		IGpio& m_gpio;
+		ISystem& m_system;
 		
         PCAL9535A ioOB;
         PCAL9535A ioTalon;
@@ -284,8 +287,8 @@ class Kestrel: public Sensor
 		bool wdtRelease = false;
 		bool updateGPS = false; ///<Don't try to update until ready 
 		static Kestrel* selfPointer;
-		static void timechange_handler(system_event_t event, int param);
-		static void outOfMemoryHandler(system_event_t event, int param);
+		static void timechange_handler(IEventType event, int param);
+		static void outOfMemoryHandler(IEventType event, int param);
 		bool timeSyncRequested = false; ///<Used to indicate to the system that a time sync was requested from Particle and not to override
 		time_t timegm(struct tm *tm); //Portable implementation
 		time_t maxTimeError = 30; //Max time error allowed between clock sources [seconds]
