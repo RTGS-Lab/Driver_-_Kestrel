@@ -1621,19 +1621,19 @@ bool Kestrel::configTalonSense()
 int Kestrel::sleep()
 {
     if((m_timeProvider.millis() - timerStart) > sysCollectMax) throwError(EXCEED_COLLECT_TIME | portErrorCode); //Throw error for whole logging system taking too long
-    SystemSleepConfiguration config;
+    ISleepConfig config;
     // SystemSleepResult result;
     switch(powerSaveMode) {
         case PowerSaveModes::PERFORMANCE:
             return 0; //Nothing to do for performance mode 
             break; 
         case PowerSaveModes::BALANCED:
-            
-            config.mode(SystemSleepMode::ULTRA_LOW_POWER) //Configure sleep mode
-                .network(NETWORK_INTERFACE_CELLULAR) //Keep network alive
-                // .flag(SystemSleepFlag::WAIT_CLOUD) //Wait for cloud communications to finish before going to sleep
-                .duration(20min) //DEBUG!
-                .gpio(Pins::Clock_INT, FALLING); //Trigger on falling clock pulse
+            config.mode = ISleepMode::ULTRA_LOW_POWER; //Configure sleep mode
+            config.network = INetworkInterfaceIndex::CELLULAR; //Keep network alive
+            // .flag(SystemSleepFlag::WAIT_CLOUD) //Wait for cloud communications to finish before going to sleep
+            config.duration = 20min; //DEBUG!
+            config.wakePin = Pins::Clock_INT;\
+            config.wakePinMode = IInterruptMode::FALLING; //Trigger on falling clock pulse
             // enableSD(false); //Turn off SD power
             ioOB.digitalWrite(PinsOB::LED_EN, HIGH); //Disable LEDs (if not done already) 
             led.sleep(true); //Put LED driver into low power mode 
@@ -1644,12 +1644,13 @@ int Kestrel::sleep()
             break;
         case PowerSaveModes::LOW_POWER:
             // Particle.disconnect(CloudDisconnectOptions().graceful(true).timeout(30s)); //Disconnect from cloud and make sure messages are sent first
-            config.mode(SystemSleepMode::ULTRA_LOW_POWER) //Configure sleep mode
-                .network(NETWORK_INTERFACE_CELLULAR) //Keep network alive
+            config.mode = ISleepMode::ULTRA_LOW_POWER; //Configure sleep mode
+            config.network = INetworkInterfaceIndex::CELLULAR; //Keep network alive
                 // .flag(SystemSleepFlag::WAIT_CLOUD) //Wait for cloud communications to finish before going to sleep
                 // .duration(5min); //DEBUG!
-                .duration(20min) //DEBUG!
-                .gpio(Pins::Clock_INT, FALLING); //Trigger on falling clock pulse
+            config.duration = 20min; //DEBUG!
+            config.wakePin = Pins::Clock_INT;
+            config.wakePinMode = IInterruptMode::FALLING; //Trigger on falling clock pulse
             // enableSD(false); //Turn off SD power
             enableAuxPower(false); //Turn all aux power off
             ioOB.digitalWrite(PinsOB::LED_EN, HIGH); //Disable LEDs (if not done already)
@@ -1663,11 +1664,12 @@ int Kestrel::sleep()
             Particle.disconnect(CloudDisconnectOptions().graceful(true).timeout(30s)); //Disconnect from cloud and make sure messages are sent first
             // Cellular.off();
             // waitFor(Cellular.isOff, 30000); //Wait up to 30 seconds for cell to turn off before sleep
-            config.mode(SystemSleepMode::ULTRA_LOW_POWER) //Configure sleep mode
+            config.mode = ISleepMode::ULTRA_LOW_POWER; //Configure sleep mode
                 // .network(NETWORK_INTERFACE_CELLULAR) //Keep network alive
                 // .flag(SystemSleepFlag::WAIT_CLOUD) //Wait for cloud communications to finish before going to sleep
                 // .duration(5min); //DEBUG!
-                .gpio(Pins::Clock_INT, FALLING); //Trigger on falling clock pulse
+            config.wakePin = Pins::Clock_INT;
+            config.wakePinMode = IInterruptMode::FALLING; //Trigger on falling clock pulse
             enableAuxPower(false); //Turn all aux power off
             ioOB.digitalWrite(PinsOB::LED_EN, HIGH); //Disable LEDs (if not done already) 
             led.sleep(true); //Put LED driver into low power mode 
