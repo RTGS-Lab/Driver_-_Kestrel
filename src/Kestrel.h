@@ -62,6 +62,7 @@ Distributed as-is; no warranty is given.
 #include "../../FlightControl-platform-dependencies/src/ITimeProvider.h"
 #include "../../FlightControl-platform-dependencies/src/IGpio.h"
 #include "../../FlightControl-platform-dependencies/src/ISystem.h"
+#include "../../FlightControl-platform-dependencies/src/IWire.h"
 
 namespace Pins { //Use for B402
 	constexpr uint16_t WD_HOLD  = D2;
@@ -198,6 +199,7 @@ class Kestrel: public Sensor
         Kestrel(ITimeProvider& timeProvider,
 				IGpio& gpio,
 				ISystem& system,
+				IWire& wire,
 				bool useSensors = false);
 		SFE_UBLOX_GNSS gps;
         String begin(time_t time, bool &criticalFault, bool &fault);
@@ -257,6 +259,7 @@ class Kestrel: public Sensor
 		ITimeProvider& m_timeProvider;
 		IGpio& m_gpio;
 		ISystem& m_system;
+		IWire& m_wire;
 		
         PCAL9535A ioOB;
         PCAL9535A ioTalon;

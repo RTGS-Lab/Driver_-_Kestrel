@@ -22,7 +22,17 @@ Kestrel* Kestrel::selfPointer;
 Kestrel::Kestrel(ITimeProvider& timeProvider, 
                  IGpio& gpio,
                  ISystem& system,
-                 bool useSensors) : ioOB(0x20), ioTalon(0x21), led(0x52), csaAlpha(2, 2, 2, 2, 0x18), csaBeta(2, 10, 10, 10, 0x14), m_timeProvider(timeProvider), m_gpio(gpio), m_system(system)
+                 IWire& wire,
+                 bool useSensors) : 
+                 ioOB(0x20), 
+                 ioTalon(0x21), 
+                 led(0x52), 
+                 csaAlpha(2, 2, 2, 2, 0x18), 
+                 csaBeta(2, 10, 10, 10, 0x14), 
+                 m_timeProvider(timeProvider), 
+                 m_gpio(gpio), 
+                 m_system(system), 
+                 m_wire(wire)
 {
 	// port = talonPort; //Copy to local
 	// version = hardwareVersion; //Copy to local
@@ -37,11 +47,11 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     m_system.on(IEventType::TIME_CHANGED, timechange_handler);
     m_system.on(IEventType::OUT_OF_MEMORY, outOfMemoryHandler);
     // #if defined(ARDUINO) && ARDUINO >= 100 
-		// Wire.begin();
-        // Wire.setClock(100000); //Confirm operation in fast mode
+		// m_wire.begin();
+        // m_wire.setClock(100000); //Confirm operation in fast mode
 	// #elif defined(PARTICLE)
-		if(!Wire.isEnabled()) Wire.begin(); //Only initialize I2C if not done already //INCLUDE FOR USE WITH PARTICLE 
-        Wire.setClock(400000);
+		if(!m_wire.isEnabled()) m_wire.begin(); //Only initialize I2C if not done already //INCLUDE FOR USE WITH PARTICLE 
+        m_wire.setClock(400000);
 	// #endif
     if(!initDone) throwError(SYSTEM_RESET | ((static_cast<uint32_t>(m_system.resetReason()) << 8) & 0xFF00)); //Throw reset error with reason for reset as subtype. Truncate resetReason to one byte. This will include all predefined reasons, but will prevent issues if user returns some large (technically can be up to 32 bits) custom reset reason
     bool globState = enableI2C_Global(false); //Turn off external I2C
@@ -311,8 +321,8 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 
 	if(diagnosticLevel <= 3) {
 		//TBD
-        Wire.beginTransmission(0x6F);
-        uint8_t rtcError = Wire.endTransmission();
+        m_wire.beginTransmission(0x6F);
+        uint8_t rtcError = m_wire.endTransmission();
         if(rtcError == 0) {
             time_t currentTime = rtc.getTimeUnix();
             m_timeProvider.delay(1200); //Wait at least 1 second (+20%)
@@ -592,9 +602,9 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
         output = output + "\"OB\":" + ioOB.readBus() + ",\"Talon\":" + ioTalon.readBus() + ","; //Report the bus readings from the IO expanders
         output = output + "\"I2C\":["; //Append identifer 
         for(int adr = 0; adr < 128; adr++) { //Check for addresses present 
-            Wire.beginTransmission(adr);
-            // Wire.write(0x00);
-            int error = Wire.endTransmission();
+            m_wire.beginTransmission(adr);
+            // m_wire.write(0x00);
+            int error = m_wire.endTransmission();
             // if(adr == 0) { //DEBUG!
             //     // Serial.print("Zero Error: ");
             //     // Serial.println(error); 
@@ -667,7 +677,7 @@ bool Kestrel::enablePower(uint8_t port, bool state)
     else {
         bool obState = enableI2C_OB(true);
         bool globState = enableI2C_Global(false);
-        // Wire.reset(); //DEBUG!
+        // m_wire.reset(); //DEBUG!
         ioTalon.pinMode(PinsTalon::EN[port - 1], OUTPUT);
         ioTalon.digitalWrite(PinsTalon::EN[port - 1], state);
         enableI2C_Global(globState); //Return to previous state
@@ -689,7 +699,7 @@ bool Kestrel::enableData(uint8_t port, bool state)
     else {
         bool obState = enableI2C_OB(true);
         bool globState = enableI2C_Global(false);
-        // Wire.reset(); //DEBUG!
+        // m_wire.reset(); //DEBUG!
         // ioTalon.pinMode(PinsTalon::SEL[port - 1], OUTPUT);
         // ioTalon.digitalWrite(PinsTalon::SEL[port - 1], LOW); //DEBUG!
         ioTalon.pinMode(PinsTalon::I2C_EN[port - 1], OUTPUT);
@@ -713,7 +723,7 @@ bool Kestrel::setDirection(uint8_t port, bool sel)
     else {
         bool obState = enableI2C_OB(true);
         bool globState = enableI2C_Global(false);
-        // Wire.reset(); //DEBUG!
+        // m_wire.reset(); //DEBUG!
         ioTalon.pinMode(PinsTalon::SEL[port - 1], OUTPUT);
         ioTalon.digitalWrite(PinsTalon::SEL[port - 1], sel); //DEBUG!
         // ioTalon.pinMode(PinsTalon::I2C_EN[port - 1], OUTPUT);
@@ -751,7 +761,7 @@ bool Kestrel::enableI2C_OB(bool state)
     bool currentState = m_gpio.digitalRead(Pins::I2C_OB_EN); 
     m_gpio.pinMode(Pins::I2C_OB_EN, IPinMode::OUTPUT);
 	m_gpio.digitalWrite(Pins::I2C_OB_EN, state);
-    // Wire.reset(); //DEBUG!
+    // m_wire.reset(); //DEBUG!
     return currentState; 
 }
 
@@ -760,7 +770,7 @@ bool Kestrel::enableI2C_Global(bool state)
     bool currentState = m_gpio.digitalRead(Pins::I2C_GLOBAL_EN); 
     m_gpio.pinMode(Pins::I2C_GLOBAL_EN, IPinMode::OUTPUT);
 	m_gpio.digitalWrite(Pins::I2C_GLOBAL_EN, state);
-    // Wire.reset(); //DEBUG!
+    // m_wire.reset(); //DEBUG!
     return currentState; 
 }
 
@@ -898,8 +908,8 @@ uint8_t Kestrel::syncTime(bool force)
     Serial.println(m_timeProvider.millis());
 
     /////////// RTC TIME //////////////
-    Wire.beginTransmission(0x6F); //Check for presence of RTC //FIX! Find a better way to test if RTC time is available 
-    uint8_t rtcError = Wire.endTransmission();
+    m_wire.beginTransmission(0x6F); //Check for presence of RTC //FIX! Find a better way to test if RTC time is available 
+    uint8_t rtcError = m_wire.endTransmission();
     sourceRequested[TimeSource::RTC] = true;
     if(rtcError != 0) {
         sourceAvailable[TimeSource::RTC] = false;
@@ -1676,17 +1686,17 @@ int Kestrel::sleep()
             // ioOB.digitalWrite(PinsOB::CSA_EN, LOW); //Disable CSAs //DEBUG! //FIX!
 
             // //SLEEP FRAM //FIX!
-            // Wire.beginTransmission(0x7C);
-            // Wire.write((0x50 << 1) | 0x01); //Shift to add "r/w" bit
-            // Wire.endTransmission(false);
-            // Wire.beginTransmission(0x43);
-            // Wire.endTransmission();
+            // m_wire.beginTransmission(0x7C);
+            // m_wire.write((0x50 << 1) | 0x01); //Shift to add "r/w" bit
+            // m_wire.endTransmission(false);
+            // m_wire.beginTransmission(0x43);
+            // m_wire.endTransmission();
 
             // //SLEEP ACCEL //FIX!
-            // Wire.beginTransmission(0x15);
-            // Wire.write(0x0D); //Write to control register
-            // Wire.write(0x01); //Set power down
-            // Wire.endTransmission();
+            // m_wire.beginTransmission(0x15);
+            // m_wire.write(0x0D); //Write to control register
+            // m_wire.write(0x01); //Set power down
+            // m_wire.endTransmission();
             break;
         default:
             //THROW ERROR??
