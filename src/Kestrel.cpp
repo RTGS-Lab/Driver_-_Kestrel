@@ -86,7 +86,8 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
         led.setGroupBlinkPeriod(ledPeriod); //Set blink period to specified number of ms
         led.setGroupOnTime(ledOnTime); //Set on time for each blinking period 
     }
-    m_serialSdi12.begin(1200, SERIAL_8N1); //Initialize SDI12 serial port //DEBUG! - Used to fix wakeup issue
+    //0b00000000 = SERIAL_8N1 defined in hal/inc/usart_hal.h
+    m_serialSdi12.begin(1200, 0b00000000); //Initialize SDI12 serial port //DEBUG! - Used to fix wakeup issue
     // setIndicatorState(IndicatorLight::ALL,IndicatorMode::WAITING); //Set all to blinking wait
     m_gpio.pinMode(Pins::Clock_INT, IPinMode::INPUT); //Make sure interrupt pin is always an input
     if(rtc.begin(true) == 0) criticalFault = true; //Use with external oscilator, set critical fault if not able to connect 
