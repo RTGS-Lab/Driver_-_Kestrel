@@ -23,6 +23,7 @@ Kestrel::Kestrel(ITimeProvider& timeProvider,
                  IGpio& gpio,
                  ISystem& system,
                  IWire& wire,
+                 ICloud& cloud,
                  bool useSensors) : 
                  ioOB(0x20), 
                  ioTalon(0x21), 
@@ -32,7 +33,8 @@ Kestrel::Kestrel(ITimeProvider& timeProvider,
                  m_timeProvider(timeProvider), 
                  m_gpio(gpio), 
                  m_system(system), 
-                 m_wire(wire)
+                 m_wire(wire),
+                 m_cloud(cloud)
 {
 	// port = talonPort; //Copy to local
 	// version = hardwareVersion; //Copy to local
@@ -149,7 +151,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
         if(!isnan(temp)) accel.offset[i] = temp; //Set offset vals if real number (meaning offset has been established)
         else accel.offset[i] = 0; //If there is no existing offset, set to 0
     }
-    // if(Particle.connected() == false) criticalFault = true; //If not connected to cell set critical error
+    // if(m_cloud.connected() == false) criticalFault = true; //If not connected to cell set critical error
     // if(criticalFault) setIndicatorState(IndicatorLight::STAT, IndicatorMode::ERROR_CRITICAL); //If there is a critical fault, set the stat light
     for(int i = 1; i <= numTalonPorts; i++) {
         enablePower(i, false); //Default all power to off
@@ -157,7 +159,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     }
     initDone = true;
     syncTime(true); //Force a time sync on startup 
-    // Particle.syncTime(); //DEBUG!
+    // m_cloud.syncTime(); //DEBUG!
     // ioOB.pinMode(PinsOB::)
     enableI2C_Global(globState); //Return to previous state
     enableI2C_OB(obState);
@@ -657,9 +659,9 @@ bool Kestrel::updateLocation(bool forceUpdate)
 bool Kestrel::connectToCell()
 {
     //FIX! Check for cell module on, etc
-    Particle.connect();
-    waitFor(Particle.connected, CELL_TIMEOUT); //Wait for cell to connect
-    if(Particle.connected()) return true;
+    m_cloud.connect();
+    m_system.waitForCondition([this]() { return m_cloud.connected(); }, std::chrono::milliseconds(CELL_TIMEOUT)); //Wait for cell to connect
+    if(m_cloud.connected()) return true;
     else {
         throwError(CELL_FAIL); //FIX! add varing reasons for fail
         return false;        
@@ -935,17 +937,17 @@ uint8_t Kestrel::syncTime(bool force)
     
     /////////// CELL TIME //////////////////
     sourceRequested[TimeSource::CELLULAR] = true;
-    if(Particle.connected()) { //Only enter if there is not already a sync pending 
+    if(m_cloud.connected()) { //Only enter if there is not already a sync pending 
         timeSyncRequested = true;
-        Particle.syncTime();
-        // waitFor(Particle.syncTimePending, 500); //Wait up to 0.5 seconds for system to assert a syncTime
-        // waitFor(Particle.syncTimeDone, 10000); //Wait until sync is done, at most 10 seconds //FIX!
+        m_cloud.syncTime();
+        // m_system.waitForCondition(m_cloud.syncTimePending, 500); //Wait up to 0.5 seconds for system to assert a syncTime
+        // m_system.waitForCondition(m_cloud.syncTimeDone, 10000); //Wait until sync is done, at most 10 seconds //FIX!
         // unsigned long localTime = m_timeProvider.millis();
-        // while(Particle.syncTimePending() && (m_timeProvider.millis() - localTime) < 10000) Particle.process(); //Process command while waiting for sync to finish or timeout 
-        // waitFor(Particle.syncTimePending, 10000); //Wait until sync is done, at most 10 seconds
-        waitFor(Particle.syncTimePending, 500); //Wait up to 0.5 seconds for system to assert a syncTime
-        waitFor(Particle.syncTimeDone, 10000); //Wait until sync is done, at most 10 seconds //FIX!
-        if(Particle.syncTimeDone()) { //Make sure sync time was actually completed 
+        // while(m_cloud.syncTimePending() && (m_timeProvider.millis() - localTime) < 10000) m_cloud.process(); //Process command while waiting for sync to finish or timeout 
+        // m_system.waitForCondition(m_cloud.syncTimePending, 10000); //Wait until sync is done, at most 10 seconds
+        m_system.waitForCondition([this]() {return m_cloud.syncTimePending();}, std::chrono::milliseconds(500)); //Wait up to 0.5 seconds for system to assert a syncTime
+        m_system.waitForCondition([this]() {return m_cloud.syncTimeDone();}, std::chrono::milliseconds(10000)); //Wait until sync is done, at most 10 seconds //FIX!
+        if(m_cloud.syncTimeDone()) { //Make sure sync time was actually completed 
             m_timeProvider.zone(0); //Set to UTC 
             cellTime = m_timeProvider.now();
             // timeSyncRequested = false; //Release control of time sync override 
@@ -1337,7 +1339,7 @@ bool Kestrel::waitUntilTimerDone()
     
     while(m_gpio.digitalRead(Pins::Clock_INT) == HIGH && ((m_timeProvider.millis() - timerStart) < (logPeriod*1000 + 500))){ //Wait until either timer has expired or clock interrupt has gone off //DEBUG! Give 500 ms cushion for testing RTC
         m_timeProvider.delay(1); 
-        Particle.process(); //Run process continually while waiting in order to make sure device is responsive 
+        m_cloud.process(); //Run process continually while waiting in order to make sure device is responsive 
     } 
     if(m_gpio.digitalRead(Pins::Clock_INT) == LOW) return true; //If RTC triggers properly, return true, else return false 
     else {
@@ -1632,6 +1634,7 @@ int Kestrel::sleep()
 {
     if((m_timeProvider.millis() - timerStart) > sysCollectMax) throwError(EXCEED_COLLECT_TIME | portErrorCode); //Throw error for whole logging system taking too long
     ISleepConfig config;
+    ICloudDisconnectOptions options;
     // SystemSleepResult result;
     switch(powerSaveMode) {
         case PowerSaveModes::PERFORMANCE:
@@ -1653,7 +1656,9 @@ int Kestrel::sleep()
             // m_system.sleep(config); //DEBUG!
             break;
         case PowerSaveModes::LOW_POWER:
-            // Particle.disconnect(CloudDisconnectOptions().graceful(true).timeout(30s)); //Disconnect from cloud and make sure messages are sent first
+            //options.graceful = true;
+            //options.timeout = 30s;
+            // m_cloud.disconnect(options); //Disconnect from cloud and make sure messages are sent first
             config.mode = ISleepMode::ULTRA_LOW_POWER; //Configure sleep mode
             config.network = INetworkInterfaceIndex::CELLULAR; //Keep network alive
                 // .flag(SystemSleepFlag::WAIT_CLOUD) //Wait for cloud communications to finish before going to sleep
@@ -1671,9 +1676,11 @@ int Kestrel::sleep()
             // m_system.sleep(config); //DEBUG!
             break;
         case PowerSaveModes::ULTRA_LOW_POWER:
-            Particle.disconnect(CloudDisconnectOptions().graceful(true).timeout(30s)); //Disconnect from cloud and make sure messages are sent first
+            options.graceful = true;
+            options.timeout = 30s;
+            m_cloud.disconnect(options); //Disconnect from cloud and make sure messages are sent first
             // Cellular.off();
-            // waitFor(Cellular.isOff, 30000); //Wait up to 30 seconds for cell to turn off before sleep
+            // m_system.waitForCondition(Cellular.isOff, 30000); //Wait up to 30 seconds for cell to turn off before sleep
             config.mode = ISleepMode::ULTRA_LOW_POWER; //Configure sleep mode
                 // .network(NETWORK_INTERFACE_CELLULAR) //Keep network alive
                 // .flag(SystemSleepFlag::WAIT_CLOUD) //Wait for cloud communications to finish before going to sleep
@@ -1732,15 +1739,15 @@ int Kestrel::sleep()
             int wakeupCount = 0; //Count how many times in a row the system is woken up by the timer
             while((result == IWakeupReason::BY_RTC || result == IWakeupReason::BY_NETWORK) && wakeupCount < 16) { //FIX! Make variable 
                 if(result == IWakeupReason::BY_RTC) {
-                    Particle.connect();
-                    waitFor(Particle.connected, 5000); //Wait for a max of 5 seconds for particle to connect
-                    // Particle.publish("DUMMY"); //DEBUG!
-                    if(!Particle.connected()) throwError(CELL_FAIL | 0x100); //Or with reconnect flag
+                    m_cloud.connect();
+                    m_system.waitForCondition([this]() { return m_cloud.connected(); }, std::chrono::milliseconds(5000)); //Wait for a max of 5 seconds for particle to connect
+                    // m_cloud.publish("DUMMY"); //DEBUG!
+                    if(!m_cloud.connected()) throwError(CELL_FAIL | 0x100); //Or with reconnect flag
                     wakeupCount++;
                 }
                 Serial.println("Wakeup Attemp Done - return to sleep"); //DEBUG!
                 Serial.flush(); //DEBUG!
-                waitFor(Particle.connected, 5000);
+                m_system.waitForCondition([this]() { return m_cloud.connected(); }, std::chrono::milliseconds(5000));
                 result = m_system.sleep(config); //Go back to sleep after re-connecting
             }
         }
@@ -1822,9 +1829,9 @@ int Kestrel::wake()
             break;
         case PowerSaveModes::ULTRA_LOW_POWER:
             enableAuxPower(true); //Turn aux power back on
-            // Particle.connect();
-            // waitFor(Particle.connected, 180s); //Wait for a max of 180 seconds for particle to connect
-            // if(!Particle.connected()) throwError(CELL_FAIL | 0x100); //Throw error if not connected after given period - Or with reconnect flag
+            // m_cloud.connect();
+            // m_system.waitForCondition(m_cloud.connected, 180s); //Wait for a max of 180 seconds for particle to connect
+            // if(!m_cloud.connected()) throwError(CELL_FAIL | 0x100); //Throw error if not connected after given period - Or with reconnect flag
             //TURN ON GPS! FIX!
             // Serial.println("Power Up GPS"); //DEBUG!
             // ioOB.pinMode(PinsOB::GPS_INT, OUTPUT); //Turn GPS back on by toggling int pin
