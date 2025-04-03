@@ -24,6 +24,8 @@ Kestrel::Kestrel(ITimeProvider& timeProvider,
                  ISystem& system,
                  IWire& wire,
                  ICloud& cloud,
+                 ISerial& serialDebug,
+                 ISerial& serialSdi12,
                  bool useSensors) : 
                  ioOB(0x20), 
                  ioTalon(0x21), 
@@ -34,7 +36,9 @@ Kestrel::Kestrel(ITimeProvider& timeProvider,
                  m_gpio(gpio), 
                  m_system(system), 
                  m_wire(wire),
-                 m_cloud(cloud)
+                 m_cloud(cloud),
+                 m_serialDebug(serialDebug),
+                 m_serialSdi12(serialSdi12)
 {
 	// port = talonPort; //Copy to local
 	// version = hardwareVersion; //Copy to local
@@ -82,7 +86,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
         led.setGroupBlinkPeriod(ledPeriod); //Set blink period to specified number of ms
         led.setGroupOnTime(ledOnTime); //Set on time for each blinking period 
     }
-    Serial1.begin(1200, SERIAL_8N1); //Initialize SDI12 serial port //DEBUG! - Used to fix wakeup issue
+    m_serialSdi12.begin(1200, SERIAL_8N1); //Initialize SDI12 serial port //DEBUG! - Used to fix wakeup issue
     // setIndicatorState(IndicatorLight::ALL,IndicatorMode::WAITING); //Set all to blinking wait
     m_gpio.pinMode(Pins::Clock_INT, IPinMode::INPUT); //Make sure interrupt pin is always an input
     if(rtc.begin(true) == 0) criticalFault = true; //Use with external oscilator, set critical fault if not able to connect 
@@ -92,7 +96,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
         rtc.setMode(MCP79412::Mode::Normal); //Make sure to enforce normal mode
     }
     //Perform wakeup in case switched off already
-    Serial.println("Wake GPS"); //DEBUG!
+    m_serialDebug.println("Wake GPS"); //DEBUG!
     ioOB.pinMode(PinsOB::GPS_INT, OUTPUT); //Turn GPS back on by toggling int pin
     ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
     m_timeProvider.delay(1000);
@@ -103,31 +107,31 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     if(gps.begin() == false) {
         criticalFault = true; //DEBUG! ??
         throwError(GPS_INIT_FAIL);
-        Serial.println("GPS ERROR");
+        m_serialDebug.println("GPS ERROR");
     }
     else {
         gps.setI2COutput(COM_TYPE_UBX);
         gps.setNavigationFrequency(1); //Produce 1 solutions per second
         gps.setAutoPVT(false); //DEBUG!
-        Serial.print("GPS Stats: "); //DEBUG!
-        Serial.print(gps.getNavigationFrequency());
-        Serial.print("\t");
-        Serial.print(gps.getMeasurementRate());
-        Serial.print("\t");
-        Serial.println(gps.getNavigationRate());
-        Serial.print("GPS Attitude: ");
-        Serial.print(gps.getATTroll());
-        Serial.print("\t");
-        Serial.print(gps.getATTpitch());
-        Serial.print("\t");
-        Serial.println(gps.getATTheading());
+        m_serialDebug.print("GPS Stats: "); //DEBUG!
+        m_serialDebug.print(gps.getNavigationFrequency());
+        m_serialDebug.print("\t");
+        m_serialDebug.print(gps.getMeasurementRate());
+        m_serialDebug.print("\t");
+        m_serialDebug.println(gps.getNavigationRate());
+        m_serialDebug.print("GPS Attitude: ");
+        m_serialDebug.print(gps.getATTroll());
+        m_serialDebug.print("\t");
+        m_serialDebug.print(gps.getATTpitch());
+        m_serialDebug.print("\t\n");
+        m_serialDebug.print(gps.getATTheading());
     }
     /// AUTO ZERO ACCEL
     int accelInitError = accel.begin();
     if(accelInitError == -1) {
         if(bma456.begin() == true) accelUsed = AccelType::BMA456; //If BMA456 detected, switch to that
         else throwError(ACCEL_INIT_FAIL); //If MXC6655 fails AND BMA456 fails, throw a general fail init error
-        // Serial.println("MXC6655 Detect fail!"); //DEBUG!
+        // m_serialDebug.println("MXC6655 Detect fail!"); //DEBUG!
     }
      
     if(accelInitError == 0 && accelUsed == AccelType::MXC6655) { //If accel read is good and MXC6655 is used, try zero
@@ -343,17 +347,17 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
         customCfg.startingSpot = 0; // Always set the startingSpot to zero (unless you really know what you are doing)
         uint16_t maxWait = 1500; // Wait for up to 250ms (Serial may need a lot longer e.g. 1100)
         if (gps.sendCommand(&customCfg, maxWait) != SFE_UBLOX_STATUS_DATA_RECEIVED) {
-            Serial.println("GPS READ FAIL"); //DEBUG!
+            m_serialDebug.println("GPS READ FAIL"); //DEBUG!
             throwError(GPS_READ_FAIL); // We are expecting data and an ACK, throw error otherwise
         }
         unsigned long ttff = 0;
         for(int i = 0; i < 4; i++) ttff = ttff | (customPayload[8 + i] << 8*i); //Concatonate the 4 bytes of the TTFF value
         if(customPayload[4] >= 2 && customPayload[4] <= 4) output = output + "\"TTFF\":" + String(ttff) + ","; //Append TTFF
         else output = output + "\"TTFF\":null,"; //If no fix, append null
-        // Serial.print("GPS UTC Seconds: "); //DEBUG!
-        // Serial.println(customPayload[18]);
-        // Serial.print("GPS UTC Validity: "); //DEBUG!
-        // Serial.println(customPayload[19], HEX);
+        // m_serialDebug.print("GPS UTC Seconds: "); //DEBUG!
+        // m_serialDebug.println(customPayload[18]);
+        // m_serialDebug.print("GPS UTC Validity: "); //DEBUG!
+        // m_serialDebug.println(customPayload[19], HEX);
  	}
 
 	if(diagnosticLevel <= 4) {
@@ -608,8 +612,8 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
             // m_wire.write(0x00);
             int error = m_wire.endTransmission();
             // if(adr == 0) { //DEBUG!
-            //     // Serial.print("Zero Error: ");
-            //     // Serial.println(error); 
+            //     // m_serialDebug.print("Zero Error: ");
+            //     // m_serialDebug.println(error); 
             // }
             if(error == 0) {
                 output = output + String(adr) + ",";
@@ -634,11 +638,11 @@ bool Kestrel::updateLocation(bool forceUpdate)
         bool globState = enableI2C_Global(false); //Turn off external I2C
         bool obState = enableI2C_OB(true); //Turn on internal I2C
         enableAuxPower(true); //Turn on aux power 
-        Serial.print("PVT Response: "); //DEBUG!
-        Serial.println(gps.getPVT());
+        m_serialDebug.print("PVT Response: "); //DEBUG!
+        m_serialDebug.println(gps.getPVT());
         // gps.getPVT(); //Force updated call //DEBUG!
         if(gps.getPVT() && gps.getFixType() >= 2 && gps.getFixType() <= 4 && gps.getGnssFixOk()) { //Only update if GPS has at least a 2D fix
-            Serial.println("UPDATE GPS"); //DEBUG!
+            m_serialDebug.println("UPDATE GPS"); //DEBUG!
             longitude = gps.getLongitude();
             latitude = gps.getLatitude();
             altitude = gps.getAltitude();
@@ -706,7 +710,7 @@ bool Kestrel::enableData(uint8_t port, bool state)
         // ioTalon.digitalWrite(PinsTalon::SEL[port - 1], LOW); //DEBUG!
         ioTalon.pinMode(PinsTalon::I2C_EN[port - 1], OUTPUT);
         ioTalon.digitalWrite(PinsTalon::I2C_EN[port - 1], state);
-        // Serial.println(PinsTalon::I2C_EN[port - 1]); //DEBUG!
+        // m_serialDebug.println(PinsTalon::I2C_EN[port - 1]); //DEBUG!
         enableI2C_Global(globState); //Return to previous state
         enableI2C_OB(obState);
     }
@@ -730,7 +734,7 @@ bool Kestrel::setDirection(uint8_t port, bool sel)
         ioTalon.digitalWrite(PinsTalon::SEL[port - 1], sel); //DEBUG!
         // ioTalon.pinMode(PinsTalon::I2C_EN[port - 1], OUTPUT);
         // ioTalon.digitalWrite(PinsTalon::I2C_EN[port - 1], state);
-        // Serial.println(PinsTalon::I2C_EN[port - 1]); //DEBUG!
+        // m_serialDebug.println(PinsTalon::I2C_EN[port - 1]); //DEBUG!
         enableI2C_Global(globState); //Return to previous state
         enableI2C_OB(obState);
     }
@@ -845,8 +849,8 @@ bool Kestrel::enableAuxPower(bool state)
 
 uint8_t Kestrel::updateTime()
 {
-    // Serial.print("Current Timer Period: "); //DEBUG!
-    // Serial.println(logPeriod);
+    // m_serialDebug.print("Current Timer Period: "); //DEBUG!
+    // m_serialDebug.println(logPeriod);
     static uint8_t timeSource = syncTime();
     static time_t lastRunTime = m_timeProvider.millis();
 
@@ -881,7 +885,7 @@ uint8_t Kestrel::updateTime()
 uint8_t Kestrel::syncTime(bool force)
 {
     //Synchronize time across GPS, Cell and RTC
-    Serial.println("TIME SYNC!"); //DEBUG!
+    m_serialDebug.println("TIME SYNC!"); //DEBUG!
     // Timestamp t = getRawTime(); //Get updated time
     bool currentAux = enableAuxPower(true);
     bool currentGlob = enableI2C_Global(false);
@@ -906,8 +910,8 @@ uint8_t Kestrel::syncTime(bool force)
     if(particleTime == 0) throwError(CLOCK_UNAVAILABLE); //If time is not valid, throw system wide error for base clock
     
     
-    Serial.print("Timebase Start: "); //DEBUG!
-    Serial.println(m_timeProvider.millis());
+    m_serialDebug.print("Timebase Start: "); //DEBUG!
+    m_serialDebug.println(m_timeProvider.millis());
 
     /////////// RTC TIME //////////////
     m_wire.beginTransmission(0x6F); //Check for presence of RTC //FIX! Find a better way to test if RTC time is available 
@@ -920,10 +924,10 @@ uint8_t Kestrel::syncTime(bool force)
     }
     else { //Only read values in if able to connect to RTC
         rtcTime = rtc.getTimeUnix();
-        Serial.print("RTC Time: ");
-        Serial.println(rtcTime); //DEBUG!
-        Serial.print("Particle Time: ");
-        Serial.println(cellTime);  
+        m_serialDebug.print("RTC Time: ");
+        m_serialDebug.println(rtcTime); //DEBUG!
+        m_serialDebug.print("Particle Time: ");
+        m_serialDebug.println(cellTime);  
         sourceAvailable[TimeSource::RTC] = true;
         times[TimeSource::RTC] = rtcTime; //Grab last time
     }
@@ -951,8 +955,8 @@ uint8_t Kestrel::syncTime(bool force)
             m_timeProvider.zone(0); //Set to UTC 
             cellTime = m_timeProvider.now();
             // timeSyncRequested = false; //Release control of time sync override 
-            Serial.print("Cell Time: "); 
-            Serial.println(cellTime);
+            m_serialDebug.print("Cell Time: "); 
+            m_serialDebug.println(cellTime);
             sourceAvailable[TimeSource::CELLULAR] = true; 
             times[TimeSource::CELLULAR] = m_timeProvider.now(); //Grab last time
         }
@@ -976,7 +980,7 @@ uint8_t Kestrel::syncTime(bool force)
     // bool currentGlob = enableI2C_Global(false);
     // bool currentOB = enableI2C_OB(true);
     //Perform wakeup in case switched off already
-    Serial.println("Wake GPS"); //DEBUG!
+    m_serialDebug.println("Wake GPS"); //DEBUG!
     ioOB.pinMode(PinsOB::GPS_INT, OUTPUT); //Turn GPS back on by toggling int pin
     ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
     m_timeProvider.delay(1000);
@@ -991,7 +995,7 @@ uint8_t Kestrel::syncTime(bool force)
         // timeSyncVals[1] = 0; //Clear if not updated
         throwError(GPS_INIT_FAIL); //Report failure to connect with GPS AND that GPS clock is not available 
         throwError(CLOCK_UNAVAILABLE | 0x08); //OR with GPS indicator 
-        Serial.println("GPS FAIL"); //DEBUG!
+        m_serialDebug.println("GPS FAIL"); //DEBUG!
     }
     // if(false); //DEBUG!
     else {
@@ -1010,13 +1014,13 @@ uint8_t Kestrel::syncTime(bool force)
         customCfg.startingSpot = 0; // Always set the startingSpot to zero (unless you really know what you are doing)
         uint16_t maxWait = 1500; // Wait for up to 250ms (Serial may need a lot longer e.g. 1100)
         if (gps.sendCommand(&customCfg, maxWait) != SFE_UBLOX_STATUS_DATA_RECEIVED) {
-            Serial.println("GPS READ FAIL"); //DEBUG!
+            m_serialDebug.println("GPS READ FAIL"); //DEBUG!
             throwError(GPS_READ_FAIL); // We are expecting data and an ACK, throw error otherwise
         }
-        // Serial.print("GPS UTC Seconds: "); //DEBUG!
-        // Serial.println(customPayload[18]);
-        Serial.print("GPS UTC Validity: "); //DEBUG!
-        Serial.println(customPayload[19], HEX);
+        // m_serialDebug.print("GPS UTC Seconds: "); //DEBUG!
+        // m_serialDebug.println(customPayload[18]);
+        m_serialDebug.print("GPS UTC Validity: "); //DEBUG!
+        m_serialDebug.println(customPayload[19], HEX);
 
         // if((customPayload[19] & 0x0F) == 0x07) { //Check if all times are valid
         //     // struct tm timeinfo = {0}; //Create struct in C++ time land
@@ -1030,8 +1034,8 @@ uint8_t Kestrel::syncTime(bool force)
         //     // gpsTime = timegm(&timeinfo); //Convert struct to unix time
         //     gpsTime = cstToUnix((customPayload[12] | (customPayload[13] << 8)), customPayload[14], customPayload[15], customPayload[16], customPayload[17], customPayload[18]); //Convert current time to Unix time
         //     // gpsTime = 0xDEADBEEF; //DEBUG!
-        //     Serial.print("GPS Time: ");
-        //     Serial.println(gpsTime); //DEBUG!
+        //     m_serialDebug.print("GPS Time: ");
+        //     m_serialDebug.println(gpsTime); //DEBUG!
         //     // timeSyncVals[1] = gpsTime; //Grab last time
         //     times[TimeSource::GPS_RTC] = gpsTime;
         //     sourceAvailable[TimeSource::GPS_RTC] = true;
@@ -1040,15 +1044,15 @@ uint8_t Kestrel::syncTime(bool force)
         //     // timeSyncVals[1] = 0; //Clear if not updated
         //     throwError(CLOCK_UNAVAILABLE | 0x08 | (customPayload[19] << 8)); //OR with GPS indicator, OR with validity payload 
         // }
-        // Serial.print("GPS Leap Seconds: "); //DEBUG!
-        // Serial.println(customPayload[9]);
+        // m_serialDebug.print("GPS Leap Seconds: "); //DEBUG!
+        // m_serialDebug.println(customPayload[9]);
         
-        // Serial.print("GPS Time: "); //DEBUG!
-        // Serial.print(gps.getHour());
-        // Serial.print(":");
-        // Serial.print(gps.getMinute());
-        // Serial.print(":");
-        // Serial.println(gps.getSecond());
+        // m_serialDebug.print("GPS Time: "); //DEBUG!
+        // m_serialDebug.print(gps.getHour());
+        // m_serialDebug.print(":");
+        // m_serialDebug.print(gps.getMinute());
+        // m_serialDebug.print(":");
+        // m_serialDebug.println(gps.getSecond());
     }
     // if(gps.getDateValid() && gps.getTimeValid() && gps.getTimeFullyResolved()) {
     uint8_t fixType = gps.getFixType();
@@ -1064,8 +1068,8 @@ uint8_t Kestrel::syncTime(bool force)
         // timeinfo.tm_sec = customPayload[18];
         // gpsTime = timegm(&timeinfo); //Convert struct to unix time
         gpsTime = cstToUnix((customPayload[12] | (customPayload[13] << 8)), customPayload[14], customPayload[15], customPayload[16], customPayload[17], customPayload[18]); //Convert current time to Unix time
-        Serial.print("GPS Time: ");
-        Serial.println(gpsTime); //DEBUG!
+        m_serialDebug.print("GPS Time: ");
+        m_serialDebug.println(gpsTime); //DEBUG!
         sourceAvailable[TimeSource::GPS] = true;
         sourceAvailable[TimeSource::GPS_RTC] = true; //By default
         times[TimeSource::GPS] = gpsTime; //Grab last time
@@ -1073,8 +1077,8 @@ uint8_t Kestrel::syncTime(bool force)
     }
     else if((customPayload[19] & 0x0F) == 0x07 && !(fixType >= 2 && fixType <= 4 && gnssFix)) { //RTC is good, but not active fix
         gpsTime = cstToUnix((customPayload[12] | (customPayload[13] << 8)), customPayload[14], customPayload[15], customPayload[16], customPayload[17], customPayload[18]); //Convert current time to Unix time
-        Serial.print("GPS RTC Time: ");
-        Serial.println(gpsTime); //DEBUG!
+        m_serialDebug.print("GPS RTC Time: ");
+        m_serialDebug.println(gpsTime); //DEBUG!
         sourceAvailable[TimeSource::GPS] = false;
         sourceAvailable[TimeSource::GPS_RTC] = true;
         times[TimeSource::GPS_RTC] = gpsTime; //Grab last time
@@ -1122,7 +1126,7 @@ uint8_t Kestrel::syncTime(bool force)
             for(int t = 0; t < (numClockSources - 1); t++) {
                 if(abs(times[remoteSource] - times[t]) < maxTimeError && t != remoteSource) { //If available time matches with another time (2 times agree) that is not iself, proceed with the time set
                     timeSourceB = t; //Record secondary source
-                    Serial.println("SET PARTICLE RTC"); //DEBUG!
+                    m_serialDebug.println("SET PARTICLE RTC"); //DEBUG!
                     m_timeProvider.setTime(times[remoteSource]);  //Set 
                     rtc.setTime(m_timeProvider.year(times[remoteSource]), m_timeProvider.month(times[remoteSource]), m_timeProvider.day(times[remoteSource]), m_timeProvider.hour(times[remoteSource]), m_timeProvider.minute(times[remoteSource]), m_timeProvider.second(times[remoteSource]));
                     timeGood = true; //Assert flag after time set
@@ -1131,7 +1135,7 @@ uint8_t Kestrel::syncTime(bool force)
             }
             if(!timeGood) { //If no matching time found, set to none and set time anyway
                 timeSourceB = TimeSource::NONE; //Set even if find no agreeing time
-                Serial.println("SET PARTICLE RTC"); //DEBUG!
+                m_serialDebug.println("SET PARTICLE RTC"); //DEBUG!
                 m_timeProvider.setTime(times[remoteSource]);  //Set
                 rtc.setTime(m_timeProvider.year(times[remoteSource]), m_timeProvider.month(times[remoteSource]), m_timeProvider.day(times[remoteSource]), m_timeProvider.hour(times[remoteSource]), m_timeProvider.minute(times[remoteSource]), m_timeProvider.second(times[remoteSource]));
             }
@@ -1144,7 +1148,7 @@ uint8_t Kestrel::syncTime(bool force)
                     for(int t = 0; t < (numClockSources - 1); t++) {
                         if(abs(times[i] - times[t]) < maxTimeError && t != i) { //If available time matches with another time (2 times agree) that is not iself, proceed with the time set
                             timeSourceB = t; //Record secondary source
-                            Serial.println("SET PARTICLE RTC"); //DEBUG!
+                            m_serialDebug.println("SET PARTICLE RTC"); //DEBUG!
                             m_timeProvider.setTime(times[i]);  //Set 
                             if(timeSourceA <= TimeSource::CELLULAR) { //If a tier 1 or 2 value is used, also update the kestrel RTC
                                 rtc.setTime(m_timeProvider.year(times[i]), m_timeProvider.month(times[i]), m_timeProvider.day(times[i]), m_timeProvider.hour(times[i]), m_timeProvider.minute(times[i]), m_timeProvider.second(times[i]));
@@ -1182,23 +1186,23 @@ uint8_t Kestrel::syncTime(bool force)
     
     // uint8_t source = TimeSource::NONE; //Default to none unless otherwise set
     // if(abs(rtcTime - gpsTime) < maxTimeError && abs(rtcTime - cellTime) < maxTimeError && rtcTime != 0 && gpsTime != 0 && cellTime != 0) { //If both updated sources match local time
-    //     Serial.println("CLOCK SOURCE: All match");
+    //     m_serialDebug.println("CLOCK SOURCE: All match");
     //     timeGood = true;
     //     source = TimeSource::CELLULAR; //Report cell as the most comprehensive source
     // }
 
     // if(abs(cellTime - gpsTime) < maxTimeError && gpsTime != 0 && cellTime != 0) { //If both remote variables match, update the time no mater what the state of the rest are
-    //     Serial.println("CLOCK SOURCE: GPS and Cell match");
+    //     m_serialDebug.println("CLOCK SOURCE: GPS and Cell match");
     //     // time_t currentTime = m_timeProvider.now(); //Ensure sync and that local offset is not applied 
     //     // rtc.setTime(m_timeProvider.year(currentTime), m_timeProvider.month(currentTime), m_timeProvider.day(currentTime), m_timeProvider.hour(currentTime), m_timeProvider.minute(currentTime), m_timeProvider.second(currentTime)); //Set RTC from Cell
     //     if(cellTime != 0) { //DEBUG! RESTORE!
     //         time_t currentTime = cellTime; //Grab time from cell, even though it is old, to ensure correct time is being set //FIX!
-    //         Serial.print("RTC Set Time: "); //DEBUG!
-    //         Serial.print(m_timeProvider.hour(currentTime));
-    //         Serial.print(":");
-    //         Serial.print(m_timeProvider.minute(currentTime));
-    //         Serial.print(":");
-    //         Serial.println(m_timeProvider.second(currentTime));
+    //         m_serialDebug.print("RTC Set Time: "); //DEBUG!
+    //         m_serialDebug.print(m_timeProvider.hour(currentTime));
+    //         m_serialDebug.print(":");
+    //         m_serialDebug.print(m_timeProvider.minute(currentTime));
+    //         m_serialDebug.print(":");
+    //         m_serialDebug.println(m_timeProvider.second(currentTime));
     //         rtc.setTime(m_timeProvider.year(currentTime), m_timeProvider.month(currentTime), m_timeProvider.day(currentTime), m_timeProvider.hour(currentTime), m_timeProvider.minute(currentTime), m_timeProvider.second(currentTime)); //Set RTC from Cell
     //     }
         
@@ -1207,7 +1211,7 @@ uint8_t Kestrel::syncTime(bool force)
     //     if(!(abs(rtcTime - gpsTime) < maxTimeError && abs(rtcTime - cellTime) < maxTimeError && rtcTime != 0 && gpsTime != 0 && cellTime != 0) && timeSyncVals[2] != 0) throwError(CLOCK_MISMATCH | 0x05); //Check if RTC is within range of others, if not throw error (only if not caused by unavailability)
     // }
     // else if(abs(cellTime - rtcTime) < maxTimeError && rtcTime != 0 && cellTime != 0) { //If cell and rtc agree
-    //     Serial.println("CLOCK SOURCE: Cell and local match");
+    //     m_serialDebug.println("CLOCK SOURCE: Cell and local match");
     //     //Can we set the GPS time??
     //     //Throw error
     //     timeGood = true;
@@ -1215,7 +1219,7 @@ uint8_t Kestrel::syncTime(bool force)
     //     if(timeSyncVals[1] != 0) throwError(CLOCK_MISMATCH | 0x08); //Throw clock mismatch error, OR with GPS indicator (only if not caused by clock unavailabilty) 
     // }
     // else if(abs(gpsTime - rtcTime) < maxTimeError && gpsTime != 0 && rtcTime != 0) { //If gps and rtc agree
-    //     Serial.println("CLOCK SOURCE: GPS and local match");
+    //     m_serialDebug.println("CLOCK SOURCE: GPS and local match");
     //     m_timeProvider.setTime(gpsTime); //Set particle time from GPS time
     //     //Throw error
     //     timeGood = true;
@@ -1225,7 +1229,7 @@ uint8_t Kestrel::syncTime(bool force)
     // else { //No two sources agree, very bad!
         
     //     if(rtcTime > 1641016800) { //Jan 1, 2022, date seems to be reeasonable //FIX!
-    //         Serial.println("CLOCK SOURCE: Stale RTC"); //DEBUG!
+    //         m_serialDebug.println("CLOCK SOURCE: Stale RTC"); //DEBUG!
     //         m_timeProvider.setTime(rtc.getTimeUnix()); //Set time from RTC   
     //         timeGood = true;
     //         source = TimeSource::RTC;
@@ -1234,7 +1238,7 @@ uint8_t Kestrel::syncTime(bool force)
     //         // if(timeSyncVals[1] != 0) throwError(CLOCK_MISMATCH | 0x200); //Throw clock mismatch error, OR with GPS indicator (only if not caused by clock unavailabilty) 
     //     }
     //     else {
-    //         Serial.println("CLOCK SOURCE: NONE"); //DEBUG!
+    //         m_serialDebug.println("CLOCK SOURCE: NONE"); //DEBUG!
     //         criticalFault = true; //FIX??
     //         timeGood = false; 
     //         m_timeProvider.setTime(946684800); //Set time back to year 2000
@@ -1251,8 +1255,8 @@ uint8_t Kestrel::syncTime(bool force)
     enableAuxPower(currentAux); //Return all to previous states
     enableI2C_Global(currentGlob);
     enableI2C_OB(currentOB);
-    Serial.print("Timebase End: "); //DEBUG!
-    Serial.println(m_timeProvider.millis());
+    m_serialDebug.print("Timebase End: "); //DEBUG!
+    m_serialDebug.println(m_timeProvider.millis());
     // if(timeGood == true) {
     //     previousTime = m_timeProvider.now(); //Grab updated time before exiting
     //     previousMillis = m_timeProvider.millis(); //Grab millis before exiting
@@ -1323,8 +1327,8 @@ bool Kestrel::startTimer(time_t period)
     bool currentGlob = enableI2C_Global(false);
     rtc.setAlarm(period); //Set alarm from current time
     timerStart = m_timeProvider.millis(); 
-    Serial.print("Time Start: "); //DEBUG!
-    Serial.println(timerStart);
+    m_serialDebug.print("Time Start: "); //DEBUG!
+    m_serialDebug.println(timerStart);
     logPeriod = period;
     enableI2C_Global(currentGlob);
     enableI2C_OB(currentOB);
@@ -1334,8 +1338,8 @@ bool Kestrel::startTimer(time_t period)
 bool Kestrel::waitUntilTimerDone()
 {
     if(logPeriod == 0) return false; //Return if not already setup
-    Serial.print("Time Now: "); //DEBUG!
-    Serial.println(m_timeProvider.millis());
+    m_serialDebug.print("Time Now: "); //DEBUG!
+    m_serialDebug.println(m_timeProvider.millis());
     
     while(m_gpio.digitalRead(Pins::Clock_INT) == HIGH && ((m_timeProvider.millis() - timerStart) < (logPeriod*1000 + 500))){ //Wait until either timer has expired or clock interrupt has gone off //DEBUG! Give 500 ms cushion for testing RTC
         m_timeProvider.delay(1); 
@@ -1540,10 +1544,10 @@ bool Kestrel::testForBat()
     else result = true;
     enableI2C_Global(currentGlob); //Reset to previous state
     enableI2C_OB(currentOB); 
-    Serial.print("BATTERY STATE: "); //DEBUG!
-    Serial.print(vBat);
-    Serial.print("\t");
-    Serial.println(result);
+    m_serialDebug.print("BATTERY STATE: "); //DEBUG!
+    m_serialDebug.print(vBat);
+    m_serialDebug.print("\t");
+    m_serialDebug.println(result);
     return result;
     // enableI2C_External(true);
 }
@@ -1616,7 +1620,7 @@ bool Kestrel::zeroAccel(bool reset)
 
 bool Kestrel::configTalonSense()
 {
-    Serial.println("CONFIG TALON SENSE"); //DEBUG!
+    m_serialDebug.println("CONFIG TALON SENSE"); //DEBUG!
     bool currentGlob = enableI2C_Global(false);
 	bool currentOB = enableI2C_OB(true);
     csaBeta.setCurrentDirection(CH4, UNIDIRECTIONAL); //Bulk voltage, unidirectional
@@ -1712,29 +1716,29 @@ int Kestrel::sleep()
     }
     // return (int) result.wakeupReason(); //Return reason for wake if not bypassed
     int fpscr = __get_FPSCR();
-    Serial.print("FPSCR Status: 0x");
-    Serial.println(fpscr, HEX);
-    Serial.print("Sleep Time: ");
-    Serial.println(m_timeProvider.millis()); 
-    // Serial.print("RTC Regs: \tCRTL:0x");
-    // Serial.print(rtc.readByte(0x07), HEX); //DEBUG!
-    // Serial.print("\tALM0:0x");
-    // Serial.println(rtc.readByte(0x0D), HEX);  //DEBUG!
-    // Serial.print("\tAML1:0x");
-    // Serial.println(rtc.readByte(0x14), HEX);  //DEBUG!
+    m_serialDebug.print("FPSCR Status: 0x");
+    m_serialDebug.println(fpscr, HEX);
+    m_serialDebug.print("Sleep Time: ");
+    m_serialDebug.println(m_timeProvider.millis()); 
+    // m_serialDebug.print("RTC Regs: \tCRTL:0x");
+    // m_serialDebug.print(rtc.readByte(0x07), HEX); //DEBUG!
+    // m_serialDebug.print("\tALM0:0x");
+    // m_serialDebug.println(rtc.readByte(0x0D), HEX);  //DEBUG!
+    // m_serialDebug.print("\tAML1:0x");
+    // m_serialDebug.println(rtc.readByte(0x14), HEX);  //DEBUG!
 
-    Serial.flush();
+    m_serialDebug.flush();
     m_timeProvider.delay(5000); //DEBUG!
     __set_FPSCR(fpscr & ~0x7); //Clear error bits to prevent assertion failure 
     if(m_gpio.digitalRead(Pins::Clock_INT) != LOW) {
         IWakeupReason result = m_system.sleep(config); //If clock not triggered already, go to sleep
         if(powerSaveMode == PowerSaveModes::LOW_POWER) { //Deal with extended sleep periods in low power mode
             m_timeProvider.delay(5000); //DEBUG!
-            Serial.print("WAKE! - "); //DEBUG!
-            Serial.print(static_cast<int>(result)); //DEBUG!
-            Serial.print("\t");
-            Serial.println(m_timeProvider.millis()); //DEBUG!
-            Serial.flush(); //DEBUG!
+            m_serialDebug.print("WAKE! - "); //DEBUG!
+            m_serialDebug.print(static_cast<int>(result)); //DEBUG!
+            m_serialDebug.print("\t");
+            m_serialDebug.println(m_timeProvider.millis()); //DEBUG!
+            m_serialDebug.flush(); //DEBUG!
 
             int wakeupCount = 0; //Count how many times in a row the system is woken up by the timer
             while((result == IWakeupReason::BY_RTC || result == IWakeupReason::BY_NETWORK) && wakeupCount < 16) { //FIX! Make variable 
@@ -1745,8 +1749,8 @@ int Kestrel::sleep()
                     if(!m_cloud.connected()) throwError(CELL_FAIL | 0x100); //Or with reconnect flag
                     wakeupCount++;
                 }
-                Serial.println("Wakeup Attemp Done - return to sleep"); //DEBUG!
-                Serial.flush(); //DEBUG!
+                m_serialDebug.println("Wakeup Attemp Done - return to sleep"); //DEBUG!
+                m_serialDebug.flush(); //DEBUG!
                 m_system.waitForCondition([this]() { return m_cloud.connected(); }, std::chrono::milliseconds(5000));
                 result = m_system.sleep(config); //Go back to sleep after re-connecting
             }
@@ -1756,7 +1760,7 @@ int Kestrel::sleep()
         }
     }
     else {
-        Serial.println("ERR - Clock Already Triggered"); //DEBUG!
+        m_serialDebug.println("ERR - Clock Already Triggered"); //DEBUG!
         return 0; //Otherwise exit with fail state //THROW ERROR!
     }
     return 1; //DEBUG! 
@@ -1770,7 +1774,7 @@ int Kestrel::wake()
             break; 
         case PowerSaveModes::BALANCED:
             if((getTime() - posTime) > 3600) { //If it has been more than an hour since last GPS point reading
-                Serial.println("Wake GPS"); //DEBUG!
+                m_serialDebug.println("Wake GPS"); //DEBUG!
                 ioOB.pinMode(PinsOB::GPS_INT, OUTPUT); //Turn GPS back on by toggling int pin
                 ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
                 m_timeProvider.delay(1000);
@@ -1781,7 +1785,7 @@ int Kestrel::wake()
                 if(gps.begin() == false) {
                     criticalFault = true; //DEBUG! ??
                     throwError(GPS_INIT_FAIL);
-                    Serial.println("GPS ERROR");
+                    m_serialDebug.println("GPS ERROR");
                 }
                 else {
                     gps.setI2COutput(COM_TYPE_UBX);
@@ -1800,7 +1804,7 @@ int Kestrel::wake()
         case PowerSaveModes::LOW_POWER:
             enableAuxPower(true); //Turn aux power back on
             if((getTime() - posTime) > 14400) { //If it has been more than 4 hours since last GPS point reading
-                Serial.println("Power Up GPS"); //DEBUG!
+                m_serialDebug.println("Power Up GPS"); //DEBUG!
                 ioOB.pinMode(PinsOB::GPS_INT, OUTPUT); //Turn GPS back on by toggling int pin
                 ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
                 m_timeProvider.delay(1000);
@@ -1811,7 +1815,7 @@ int Kestrel::wake()
                 if(gps.begin() == false) {
                     criticalFault = true; //DEBUG! ??
                     throwError(GPS_INIT_FAIL);
-                    Serial.println("GPS ERROR");
+                    m_serialDebug.println("GPS ERROR");
                 }
                 else {
                     gps.setI2COutput(COM_TYPE_UBX);
@@ -1833,7 +1837,7 @@ int Kestrel::wake()
             // m_system.waitForCondition(m_cloud.connected, 180s); //Wait for a max of 180 seconds for particle to connect
             // if(!m_cloud.connected()) throwError(CELL_FAIL | 0x100); //Throw error if not connected after given period - Or with reconnect flag
             //TURN ON GPS! FIX!
-            // Serial.println("Power Up GPS"); //DEBUG!
+            // m_serialDebug.println("Power Up GPS"); //DEBUG!
             // ioOB.pinMode(PinsOB::GPS_INT, OUTPUT); //Turn GPS back on by toggling int pin
             // ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
             // m_timeProvider.delay(1000);
@@ -1844,7 +1848,7 @@ int Kestrel::wake()
             // if(gps.begin() == false) {
             //     criticalFault = true; //DEBUG! ??
             //     throwError(GPS_INIT_FAIL);
-            //     Serial.println("GPS ERROR");
+            //     m_serialDebug.println("GPS ERROR");
             // }
             // else {
             //     gps.setI2COutput(COM_TYPE_UBX);
@@ -1872,24 +1876,24 @@ int Kestrel::wake()
 
 void Kestrel::timechange_handler(IEventType event, int param)
 {
-    // Serial.print("Time Change Handler: "); //DEBUG!
-    // Serial.print(event); //DEBUG!
-    // Serial.print("\t");
-    // Serial.println(param); //DEBUG!
+    // m_serialDebug.print("Time Change Handler: "); //DEBUG!
+    // m_serialDebug.print(event); //DEBUG!
+    // m_serialDebug.print("\t");
+    // m_serialDebug.println(param); //DEBUG!
     if(event == IEventType::TIME_CHANGED) { //Confirm event type before proceeding 
         if(param == time_changed_sync && !(selfPointer->initDone)) { 
-            Serial.println("TIME CHANGE: Updating"); //DEBUG!
+            selfPointer->m_serialDebug.println("TIME CHANGE: Updating"); //DEBUG!
             // selfPointer->syncTime(); //if time update not from manual sync (and sync not requested), call time sync to return to desired val
         }
         if(param == time_changed_sync && !(selfPointer->timeSyncRequested) && (selfPointer->initDone)) { 
-            Serial.println("TIME CHANGE: Auto"); //DEBUG!
+            selfPointer->m_serialDebug.println("TIME CHANGE: Auto"); //DEBUG!
             selfPointer->syncTime(); //if time update not from manual sync (and sync not requested), call time sync to return to desired val
         }
         if(param == time_changed_sync && selfPointer->timeSyncRequested) {
-            Serial.println("TIME CHANGE: Requested"); //DEBUG!
+            selfPointer->m_serialDebug.println("TIME CHANGE: Requested"); //DEBUG!
             selfPointer->timeSyncRequested = false; //Clear flag
         }
-        if(param == time_changed_manually) Serial.println("TIME CHANGE: Manual"); //DEBUG!
+        if(param == time_changed_manually) selfPointer->m_serialDebug.println("TIME CHANGE: Manual"); //DEBUG!
     }
 }
 
