@@ -66,6 +66,8 @@ Distributed as-is; no warranty is given.
 #include "../../FlightControl-platform-dependencies/src/ICloud.h"
 #include "../../FlightControl-platform-dependencies/src/ISerial.h"
 
+#include "../../FlightControl-hardware-dependencies/src/IIOExpander.h"
+
 namespace Pins { //Use for B402
 	constexpr uint16_t WD_HOLD  = D2;
 	constexpr uint16_t SD_CS    = D8;
@@ -205,6 +207,8 @@ class Kestrel: public Sensor
 				ICloud& cloud,
 				ISerial& serialDebug,
 				ISerial& serialSdi12,
+				IIOExpander& ioOB,
+				IIOExpander& ioTalon,
 				bool useSensors = false);
 		SFE_UBLOX_GNSS gps;
         String begin(time_t time, bool &criticalFault, bool &fault);
@@ -268,9 +272,10 @@ class Kestrel: public Sensor
 		ICloud& m_cloud;
 		ISerial& m_serialDebug;
 		ISerial& m_serialSdi12;
+
+		IIOExpander& m_ioOB;
+		IIOExpander& m_ioTalon;
 		
-        PCAL9535A ioOB;
-        PCAL9535A ioTalon;
 		MCP79412 rtc;
 		PAC1934 csaAlpha;
 		PAC1934 csaBeta;

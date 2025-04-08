@@ -26,9 +26,9 @@ Kestrel::Kestrel(ITimeProvider& timeProvider,
                  ICloud& cloud,
                  ISerial& serialDebug,
                  ISerial& serialSdi12,
+                 IIOExpander& ioOB,
+                 IIOExpander& ioTalon,
                  bool useSensors) : 
-                 ioOB(0x20), 
-                 ioTalon(0x21), 
                  led(0x52), 
                  csaAlpha(2, 2, 2, 2, 0x18), 
                  csaBeta(2, 10, 10, 10, 0x14), 
@@ -38,7 +38,9 @@ Kestrel::Kestrel(ITimeProvider& timeProvider,
                  m_wire(wire),
                  m_cloud(cloud),
                  m_serialDebug(serialDebug),
-                 m_serialSdi12(serialSdi12)
+                 m_serialSdi12(serialSdi12),
+                 m_ioOB(ioOB),
+                 m_ioTalon(ioTalon)
 {
 	// port = talonPort; //Copy to local
 	// version = hardwareVersion; //Copy to local
@@ -62,9 +64,9 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     if(!initDone) throwError(SYSTEM_RESET | ((static_cast<uint32_t>(m_system.resetReason()) << 8) & 0xFF00)); //Throw reset error with reason for reset as subtype. Truncate resetReason to one byte. This will include all predefined reasons, but will prevent issues if user returns some large (technically can be up to 32 bits) custom reset reason
     bool globState = enableI2C_Global(false); //Turn off external I2C
     bool obState = enableI2C_OB(true); //Turn on internal I2C
-    if(ioOB.begin() != 0) criticalFault = true;
-    if(ioTalon.begin() != 0) criticalFault = true;
-    ioTalon.safeMode(PCAL9535A::SAFEOFF); //DEBUG! //Turn safe mode off to speed up turn-off times for Talons
+    if(m_ioOB.begin() != 0) criticalFault = true;
+    if(m_ioTalon.begin() != 0) criticalFault = true;
+    m_ioTalon.safeMode(PCAL9535A::SAFEOFF); //DEBUG! //Turn safe mode off to speed up turn-off times for Talons
     enableAuxPower(true); //Turn on aux power 
     if(csaAlpha.begin() == false) { //If fails at default address, then try alt v1.9 address
         csaAlpha.setAddress(0x19);
@@ -74,8 +76,8 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     csaBeta.begin();
     csaAlpha.setFrequency(Frequency::SPS_64); //Set to ensure at least 24 hours between accumulator rollover 
     // m_timeProvider.delay(100); //DEBUG! For GPS
-    ioOB.pinMode(PinsOB::LED_EN, OUTPUT);
-	ioOB.digitalWrite(PinsOB::LED_EN, LOW); //Turn on LED indicators 
+    m_ioOB.pinMode(PinsOB::LED_EN, OUTPUT);
+	m_ioOB.digitalWrite(PinsOB::LED_EN, LOW); //Turn on LED indicators 
     led.begin();
     if(!initDone) { //Only set state if not done already
         led.setOutputMode(OpenDrain); //Set device to use open drain outputs
@@ -98,12 +100,12 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     }
     //Perform wakeup in case switched off already
     m_serialDebug.println("Wake GPS"); //DEBUG!
-    ioOB.pinMode(PinsOB::GPS_INT, OUTPUT); //Turn GPS back on by toggling int pin
-    ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
+    m_ioOB.pinMode(PinsOB::GPS_INT, OUTPUT); //Turn GPS back on by toggling int pin
+    m_ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
     m_timeProvider.delay(1000);
-    ioOB.digitalWrite(PinsOB::GPS_INT, HIGH);
+    m_ioOB.digitalWrite(PinsOB::GPS_INT, HIGH);
     m_timeProvider.delay(1000);
-    ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
+    m_ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
     m_timeProvider.delay(1000);
     if(gps.begin() == false) {
         criticalFault = true; //DEBUG! ??
@@ -165,7 +167,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     initDone = true;
     syncTime(true); //Force a time sync on startup 
     // m_cloud.syncTime(); //DEBUG!
-    // ioOB.pinMode(PinsOB::)
+    // m_ioOB.pinMode(PinsOB::)
     enableI2C_Global(globState); //Return to previous state
     enableI2C_OB(obState);
    
@@ -363,7 +365,7 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 
 	if(diagnosticLevel <= 4) {
         static time_t lastAccReset = 0; //Grab time that accumulators were reset. Set to 0 on restart
-        ioOB.digitalWrite(PinsOB::CSA_EN, HIGH); //Enable CSA GPIO control
+        m_ioOB.digitalWrite(PinsOB::CSA_EN, HIGH); //Enable CSA GPIO control
         bool initA = csaAlpha.begin();
         bool initB = csaBeta.begin();
 		if(initA == true || initB == true) { //Only proceed if one of the ADCs connects correctly
@@ -606,7 +608,7 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
         // output = output + "\"Times\":[" + String((int)timeSyncVals[0]) + "," + String((int)timeSyncVals[1]) + "," + String((int)timeSyncVals[2]) + "],"; //Add reported times from last sync
         if(lastTimeSync > 0) output = output + "\"Last Sync\":" + String((int)lastTimeSync) + ",";
         else output = output + "\"Last Sync\":null,";
-        output = output + "\"OB\":" + ioOB.readBus() + ",\"Talon\":" + ioTalon.readBus() + ","; //Report the bus readings from the IO expanders
+        output = output + "\"OB\":" + m_ioOB.readBus() + ",\"Talon\":" + m_ioTalon.readBus() + ","; //Report the bus readings from the IO expanders
         output = output + "\"I2C\":["; //Append identifer 
         for(int adr = 0; adr < 128; adr++) { //Check for addresses present 
             m_wire.beginTransmission(adr);
@@ -685,8 +687,8 @@ bool Kestrel::enablePower(uint8_t port, bool state)
         bool obState = enableI2C_OB(true);
         bool globState = enableI2C_Global(false);
         // m_wire.reset(); //DEBUG!
-        ioTalon.pinMode(PinsTalon::EN[port - 1], OUTPUT);
-        ioTalon.digitalWrite(PinsTalon::EN[port - 1], state);
+        m_ioTalon.pinMode(PinsTalon::EN[port - 1], OUTPUT);
+        m_ioTalon.digitalWrite(PinsTalon::EN[port - 1], state);
         enableI2C_Global(globState); //Return to previous state
         enableI2C_OB(obState);
     }
@@ -707,10 +709,10 @@ bool Kestrel::enableData(uint8_t port, bool state)
         bool obState = enableI2C_OB(true);
         bool globState = enableI2C_Global(false);
         // m_wire.reset(); //DEBUG!
-        // ioTalon.pinMode(PinsTalon::SEL[port - 1], OUTPUT);
-        // ioTalon.digitalWrite(PinsTalon::SEL[port - 1], LOW); //DEBUG!
-        ioTalon.pinMode(PinsTalon::I2C_EN[port - 1], OUTPUT);
-        ioTalon.digitalWrite(PinsTalon::I2C_EN[port - 1], state);
+        // m_ioTalon.pinMode(PinsTalon::SEL[port - 1], OUTPUT);
+        // m_ioTalon.digitalWrite(PinsTalon::SEL[port - 1], LOW); //DEBUG!
+        m_ioTalon.pinMode(PinsTalon::I2C_EN[port - 1], OUTPUT);
+        m_ioTalon.digitalWrite(PinsTalon::I2C_EN[port - 1], state);
         // m_serialDebug.println(PinsTalon::I2C_EN[port - 1]); //DEBUG!
         enableI2C_Global(globState); //Return to previous state
         enableI2C_OB(obState);
@@ -731,10 +733,10 @@ bool Kestrel::setDirection(uint8_t port, bool sel)
         bool obState = enableI2C_OB(true);
         bool globState = enableI2C_Global(false);
         // m_wire.reset(); //DEBUG!
-        ioTalon.pinMode(PinsTalon::SEL[port - 1], OUTPUT);
-        ioTalon.digitalWrite(PinsTalon::SEL[port - 1], sel); //DEBUG!
-        // ioTalon.pinMode(PinsTalon::I2C_EN[port - 1], OUTPUT);
-        // ioTalon.digitalWrite(PinsTalon::I2C_EN[port - 1], state);
+        m_ioTalon.pinMode(PinsTalon::SEL[port - 1], OUTPUT);
+        m_ioTalon.digitalWrite(PinsTalon::SEL[port - 1], sel); //DEBUG!
+        // m_ioTalon.pinMode(PinsTalon::I2C_EN[port - 1], OUTPUT);
+        // m_ioTalon.digitalWrite(PinsTalon::I2C_EN[port - 1], state);
         // m_serialDebug.println(PinsTalon::I2C_EN[port - 1]); //DEBUG!
         enableI2C_Global(globState); //Return to previous state
         enableI2C_OB(obState);
@@ -753,7 +755,7 @@ bool Kestrel::getFault(uint8_t port)
         bool state = true;
         bool globState = enableI2C_Global(false);
         bool obState = enableI2C_OB(true);
-        if(ioTalon.digitalRead(PinsTalon::EN[port - 1]) == HIGH) state = false; //If fault line is high, return false for no fault 
+        if(m_ioTalon.digitalRead(PinsTalon::EN[port - 1]) == HIGH) state = false; //If fault line is high, return false for no fault 
         else state = true; //If there is a read failure or otherwise unable to read, assume a fault
         enableI2C_Global(globState); //Return to previous state
         enableI2C_OB(obState);
@@ -786,9 +788,9 @@ bool Kestrel::enableI2C_External(bool state)
     bool globState = enableI2C_Global(false);
 	bool obState = enableI2C_OB(true);
 	//Turn on external I2C port
-    bool currentState = ioOB.digitalRead(PinsOB::I2C_EXT_EN);
-	ioOB.pinMode(PinsOB::I2C_EXT_EN, OUTPUT);
-	ioOB.digitalWrite(PinsOB::I2C_EXT_EN, state);
+    bool currentState = m_ioOB.digitalRead(PinsOB::I2C_EXT_EN);
+	m_ioOB.pinMode(PinsOB::I2C_EXT_EN, OUTPUT);
+	m_ioOB.digitalWrite(PinsOB::I2C_EXT_EN, state);
     enableI2C_Global(globState); //Return to previous state
     enableI2C_OB(obState);
     return currentState; //DEBUG! How to return failure? Don't both and just throw error??
@@ -814,15 +816,15 @@ bool Kestrel::enableSD(bool state)
 {
     bool globState = enableI2C_Global(false);
 	bool obState = enableI2C_OB(true);
-    bool currentState = ioOB.digitalRead(PinsOB::SD_EN);
+    bool currentState = m_ioOB.digitalRead(PinsOB::SD_EN);
     if(state) {
         enableAuxPower(true); //Make sure Aux power is on
-        ioOB.pinMode(PinsOB::SD_EN, OUTPUT);
-        ioOB.digitalWrite(PinsOB::SD_EN, HIGH);
+        m_ioOB.pinMode(PinsOB::SD_EN, OUTPUT);
+        m_ioOB.digitalWrite(PinsOB::SD_EN, HIGH);
     }
     else if(!state) {
-        ioOB.pinMode(PinsOB::SD_EN, OUTPUT);
-        ioOB.digitalWrite(PinsOB::SD_EN, LOW);
+        m_ioOB.pinMode(PinsOB::SD_EN, OUTPUT);
+        m_ioOB.digitalWrite(PinsOB::SD_EN, LOW);
     }
     enableI2C_Global(globState); //Return to previous state
     enableI2C_OB(obState);
@@ -831,8 +833,8 @@ bool Kestrel::enableSD(bool state)
 
 bool Kestrel::sdInserted()
 {
-    ioOB.pinMode(PinsOB::SD_CD, INPUT_PULLUP);
-    if(ioOB.digitalRead(PinsOB::SD_CD) == LOW) return true; //If switch is closed, return true
+    m_ioOB.pinMode(PinsOB::SD_CD, INPUT_PULLUP);
+    if(m_ioOB.digitalRead(PinsOB::SD_CD) == LOW) return true; //If switch is closed, return true
     else return false; //Otherwise it is not inserted 
 }
 
@@ -840,9 +842,9 @@ bool Kestrel::enableAuxPower(bool state)
 {
     bool globState = enableI2C_Global(false);
 	bool obState = enableI2C_OB(true);
-    bool currentState = ioOB.digitalRead(PinsOB::AUX_EN);
-    ioOB.pinMode(PinsOB::AUX_EN, OUTPUT);
-    ioOB.digitalWrite(PinsOB::AUX_EN, state); 
+    bool currentState = m_ioOB.digitalRead(PinsOB::AUX_EN);
+    m_ioOB.pinMode(PinsOB::AUX_EN, OUTPUT);
+    m_ioOB.digitalWrite(PinsOB::AUX_EN, state); 
     enableI2C_Global(globState); //Return to previous state
     enableI2C_OB(obState);
     return currentState; //DEBUG! How to return failure? Don't both and just throw error??
@@ -982,12 +984,12 @@ uint8_t Kestrel::syncTime(bool force)
     // bool currentOB = enableI2C_OB(true);
     //Perform wakeup in case switched off already
     m_serialDebug.println("Wake GPS"); //DEBUG!
-    ioOB.pinMode(PinsOB::GPS_INT, OUTPUT); //Turn GPS back on by toggling int pin
-    ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
+    m_ioOB.pinMode(PinsOB::GPS_INT, OUTPUT); //Turn GPS back on by toggling int pin
+    m_ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
     m_timeProvider.delay(1000);
-    ioOB.digitalWrite(PinsOB::GPS_INT, HIGH);
+    m_ioOB.digitalWrite(PinsOB::GPS_INT, HIGH);
     m_timeProvider.delay(1000);
-    ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
+    m_ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
     m_timeProvider.delay(1000);
     // gps.begin();
     if(gps.begin() == false) {
@@ -1527,16 +1529,16 @@ bool Kestrel::testForBat()
 {
     bool currentGlob = enableI2C_Global(false);
 	bool currentOB = enableI2C_OB(true);
-    ioOB.pinMode(PinsOB::CE, OUTPUT);
-    ioOB.pinMode(PinsOB::CSA_EN, OUTPUT);
-    ioOB.digitalWrite(PinsOB::CE, HIGH); //Disable charging
-    ioOB.digitalWrite(PinsOB::CSA_EN, HIGH); //Enable voltage sense
+    m_ioOB.pinMode(PinsOB::CE, OUTPUT);
+    m_ioOB.pinMode(PinsOB::CSA_EN, OUTPUT);
+    m_ioOB.digitalWrite(PinsOB::CE, HIGH); //Disable charging
+    m_ioOB.digitalWrite(PinsOB::CSA_EN, HIGH); //Enable voltage sense
     csaAlpha.enableChannel(CH1, true);
     csaAlpha.update(); //Force new readings 
     m_timeProvider.delay(5000); //Wait for cap to discharge 
     // csaAlpha.SetCurrentDirection(CH1, BIDIRECTIONAL);
     float vBat = csaAlpha.getBusVoltage(CH1);
-    ioOB.digitalWrite(PinsOB::CE, LOW); //Turn charging back on
+    m_ioOB.digitalWrite(PinsOB::CE, LOW); //Turn charging back on
     bool result = false;
     if(vBat < 2.0) { //If less than 2V (min bat voltage) give error 
         //THROW ERROR???
@@ -1653,7 +1655,7 @@ int Kestrel::sleep()
             config.wakePin = Pins::Clock_INT;\
             config.wakePinMode = IInterruptMode::FALLING; //Trigger on falling clock pulse
             // enableSD(false); //Turn off SD power
-            ioOB.digitalWrite(PinsOB::LED_EN, HIGH); //Disable LEDs (if not done already) 
+            m_ioOB.digitalWrite(PinsOB::LED_EN, HIGH); //Disable LEDs (if not done already) 
             led.sleep(true); //Put LED driver into low power mode 
             if(!gps.powerOffWithInterrupt(3600000, VAL_RXM_PMREQ_WAKEUPSOURCE_EXTINT0)) throwError(GPS_READ_FAIL); //Shutdown for an hour unless woken up via pin trip
 
@@ -1673,7 +1675,7 @@ int Kestrel::sleep()
             config.wakePinMode = IInterruptMode::FALLING; //Trigger on falling clock pulse
             // enableSD(false); //Turn off SD power
             enableAuxPower(false); //Turn all aux power off
-            ioOB.digitalWrite(PinsOB::LED_EN, HIGH); //Disable LEDs (if not done already)
+            m_ioOB.digitalWrite(PinsOB::LED_EN, HIGH); //Disable LEDs (if not done already)
             led.sleep(true); //Put LED driver into low power mode  
             // gps.powerOffWithInterrupt(3600000, VAL_RXM_PMREQ_WAKEUPSOURCE_EXTINT0); //Shutdown for an hour unless woken up via pin trip
 
@@ -1693,9 +1695,9 @@ int Kestrel::sleep()
             config.wakePin = Pins::Clock_INT;
             config.wakePinMode = IInterruptMode::FALLING; //Trigger on falling clock pulse
             enableAuxPower(false); //Turn all aux power off
-            ioOB.digitalWrite(PinsOB::LED_EN, HIGH); //Disable LEDs (if not done already) 
+            m_ioOB.digitalWrite(PinsOB::LED_EN, HIGH); //Disable LEDs (if not done already) 
             led.sleep(true); //Put LED driver into low power mode 
-            // ioOB.digitalWrite(PinsOB::CSA_EN, LOW); //Disable CSAs //DEBUG! //FIX!
+            // m_ioOB.digitalWrite(PinsOB::CSA_EN, LOW); //Disable CSAs //DEBUG! //FIX!
 
             // //SLEEP FRAM //FIX!
             // m_wire.beginTransmission(0x7C);
@@ -1776,12 +1778,12 @@ int Kestrel::wake()
         case PowerSaveModes::BALANCED:
             if((getTime() - posTime) > 3600) { //If it has been more than an hour since last GPS point reading
                 m_serialDebug.println("Wake GPS"); //DEBUG!
-                ioOB.pinMode(PinsOB::GPS_INT, OUTPUT); //Turn GPS back on by toggling int pin
-                ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
+                m_ioOB.pinMode(PinsOB::GPS_INT, OUTPUT); //Turn GPS back on by toggling int pin
+                m_ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
                 m_timeProvider.delay(1000);
-                ioOB.digitalWrite(PinsOB::GPS_INT, HIGH);
+                m_ioOB.digitalWrite(PinsOB::GPS_INT, HIGH);
                 m_timeProvider.delay(1000);
-                ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
+                m_ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
                 m_timeProvider.delay(1000);
                 if(gps.begin() == false) {
                     criticalFault = true; //DEBUG! ??
@@ -1806,12 +1808,12 @@ int Kestrel::wake()
             enableAuxPower(true); //Turn aux power back on
             if((getTime() - posTime) > 14400) { //If it has been more than 4 hours since last GPS point reading
                 m_serialDebug.println("Power Up GPS"); //DEBUG!
-                ioOB.pinMode(PinsOB::GPS_INT, OUTPUT); //Turn GPS back on by toggling int pin
-                ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
+                m_ioOB.pinMode(PinsOB::GPS_INT, OUTPUT); //Turn GPS back on by toggling int pin
+                m_ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
                 m_timeProvider.delay(1000);
-                ioOB.digitalWrite(PinsOB::GPS_INT, HIGH);
+                m_ioOB.digitalWrite(PinsOB::GPS_INT, HIGH);
                 m_timeProvider.delay(1000);
-                ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
+                m_ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
                 m_timeProvider.delay(1000);
                 if(gps.begin() == false) {
                     criticalFault = true; //DEBUG! ??
@@ -1839,12 +1841,12 @@ int Kestrel::wake()
             // if(!m_cloud.connected()) throwError(CELL_FAIL | 0x100); //Throw error if not connected after given period - Or with reconnect flag
             //TURN ON GPS! FIX!
             // m_serialDebug.println("Power Up GPS"); //DEBUG!
-            // ioOB.pinMode(PinsOB::GPS_INT, OUTPUT); //Turn GPS back on by toggling int pin
-            // ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
+            // m_ioOB.pinMode(PinsOB::GPS_INT, OUTPUT); //Turn GPS back on by toggling int pin
+            // m_ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
             // m_timeProvider.delay(1000);
-            // ioOB.digitalWrite(PinsOB::GPS_INT, HIGH);
+            // m_ioOB.digitalWrite(PinsOB::GPS_INT, HIGH);
             // m_timeProvider.delay(1000);
-            // ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
+            // m_ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
             // m_timeProvider.delay(1000);
             // if(gps.begin() == false) {
             //     criticalFault = true; //DEBUG! ??
