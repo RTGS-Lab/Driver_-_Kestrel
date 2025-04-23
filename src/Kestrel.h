@@ -67,6 +67,7 @@ Distributed as-is; no warranty is given.
 #include "../../FlightControl-platform-dependencies/src/ISerial.h"
 
 #include "../../FlightControl-hardware-dependencies/src/IIOExpander.h"
+#include "../../FlightControl-hardware-dependencies/src/ICurrentSenseAmplifier.h"
 
 namespace Pins { //Use for B402
 	constexpr uint16_t WD_HOLD  = D2;
@@ -209,6 +210,8 @@ class Kestrel: public Sensor
 				ISerial& serialSdi12,
 				IIOExpander& ioOB,
 				IIOExpander& ioTalon,
+				ICurrentSenseAmplifier& csaAlpha,
+				ICurrentSenseAmplifier& csaBeta,
 				bool useSensors = false);
 		SFE_UBLOX_GNSS gps;
         String begin(time_t time, bool &criticalFault, bool &fault);
@@ -275,10 +278,11 @@ class Kestrel: public Sensor
 
 		IIOExpander& m_ioOB;
 		IIOExpander& m_ioTalon;
+
+		ICurrentSenseAmplifier& m_csaAlpha;
+		ICurrentSenseAmplifier& m_csaBeta;
 		
 		MCP79412 rtc;
-		PAC1934 csaAlpha;
-		PAC1934 csaBeta;
 		VEML3328 als;
 		Adafruit_SHT4x atmos;
 		MXC6655 accel; 

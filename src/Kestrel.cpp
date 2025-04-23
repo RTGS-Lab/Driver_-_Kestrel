@@ -28,10 +28,12 @@ Kestrel::Kestrel(ITimeProvider& timeProvider,
                  ISerial& serialSdi12,
                  IIOExpander& ioOB,
                  IIOExpander& ioTalon,
+                 ICurrentSenseAmplifier& csaAlpha,
+                 ICurrentSenseAmplifier& csaBeta,
                  bool useSensors) : 
                  led(0x52), 
-                 csaAlpha(2, 2, 2, 2, 0x18), 
-                 csaBeta(2, 10, 10, 10, 0x14), 
+                 m_csaAlpha(csaAlpha), 
+                 m_csaBeta(csaBeta), 
                  m_timeProvider(timeProvider), 
                  m_gpio(gpio), 
                  m_system(system), 
@@ -68,13 +70,13 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     if(m_ioTalon.begin() != 0) criticalFault = true;
     m_ioTalon.safeMode(PCAL9535A::SAFEOFF); //DEBUG! //Turn safe mode off to speed up turn-off times for Talons
     enableAuxPower(true); //Turn on aux power 
-    if(csaAlpha.begin() == false) { //If fails at default address, then try alt v1.9 address
-        csaAlpha.setAddress(0x19);
-        if(csaAlpha.begin()) boardVersion = HardwareVersion::MODEL_1v9; //If alt address works, board must be a v1.9
+    if(m_csaAlpha.begin() == false) { //If fails at default address, then try alt v1.9 address
+        m_csaAlpha.setAddress(0x19);
+        if(m_csaAlpha.begin()) boardVersion = HardwareVersion::MODEL_1v9; //If alt address works, board must be a v1.9
         //else THROW ERROR! FIX!
     }
-    csaBeta.begin();
-    csaAlpha.setFrequency(Frequency::SPS_64); //Set to ensure at least 24 hours between accumulator rollover 
+    m_csaBeta.begin();
+    m_csaAlpha.setFrequency(Frequency::SPS_64); //Set to ensure at least 24 hours between accumulator rollover 
     // m_timeProvider.delay(100); //DEBUG! For GPS
     m_ioOB.pinMode(PinsOB::LED_EN, OUTPUT);
 	m_ioOB.digitalWrite(PinsOB::LED_EN, LOW); //Turn on LED indicators 
@@ -366,42 +368,42 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 	if(diagnosticLevel <= 4) {
         static time_t lastAccReset = 0; //Grab time that accumulators were reset. Set to 0 on restart
         m_ioOB.digitalWrite(PinsOB::CSA_EN, HIGH); //Enable CSA GPIO control
-        bool initA = csaAlpha.begin();
-        bool initB = csaBeta.begin();
+        bool initA = m_csaAlpha.begin();
+        bool initB = m_csaBeta.begin();
 		if(initA == true || initB == true) { //Only proceed if one of the ADCs connects correctly
 			// adcSense.SetResolution(18); //Set to max resolution (we paid for it right?) 
             //Setup CSAs
             if(initA == true) {
-                csaAlpha.enableChannel(Channel::CH1, true); //Enable all channels
-                csaAlpha.enableChannel(Channel::CH2, true);
-                csaAlpha.enableChannel(Channel::CH3, true);
-                csaAlpha.enableChannel(Channel::CH4, true);
-                csaAlpha.setCurrentDirection(Channel::CH1, BIDIRECTIONAL);
-                csaAlpha.setCurrentDirection(Channel::CH2, UNIDIRECTIONAL);
-                csaAlpha.setCurrentDirection(Channel::CH3, UNIDIRECTIONAL);
-                csaAlpha.setCurrentDirection(Channel::CH4, UNIDIRECTIONAL);
+                m_csaAlpha.enableChannel(Channel::CH1, true); //Enable all channels
+                m_csaAlpha.enableChannel(Channel::CH2, true);
+                m_csaAlpha.enableChannel(Channel::CH3, true);
+                m_csaAlpha.enableChannel(Channel::CH4, true);
+                m_csaAlpha.setCurrentDirection(Channel::CH1, BIDIRECTIONAL);
+                m_csaAlpha.setCurrentDirection(Channel::CH2, UNIDIRECTIONAL);
+                m_csaAlpha.setCurrentDirection(Channel::CH3, UNIDIRECTIONAL);
+                m_csaAlpha.setCurrentDirection(Channel::CH4, UNIDIRECTIONAL);
             }
 
             if(initB == true) {
-                csaBeta.enableChannel(Channel::CH1, true); //Enable all channels
-                csaBeta.enableChannel(Channel::CH2, true);
-                csaBeta.enableChannel(Channel::CH3, true);
-                csaBeta.enableChannel(Channel::CH4, true);
-                csaBeta.setCurrentDirection(Channel::CH1, UNIDIRECTIONAL);
-                csaBeta.setCurrentDirection(Channel::CH2, UNIDIRECTIONAL);
-                csaBeta.setCurrentDirection(Channel::CH3, UNIDIRECTIONAL);
-                csaBeta.setCurrentDirection(Channel::CH4, UNIDIRECTIONAL);
+                m_csaBeta.enableChannel(Channel::CH1, true); //Enable all channels
+                m_csaBeta.enableChannel(Channel::CH2, true);
+                m_csaBeta.enableChannel(Channel::CH3, true);
+                m_csaBeta.enableChannel(Channel::CH4, true);
+                m_csaBeta.setCurrentDirection(Channel::CH1, UNIDIRECTIONAL);
+                m_csaBeta.setCurrentDirection(Channel::CH2, UNIDIRECTIONAL);
+                m_csaBeta.setCurrentDirection(Channel::CH3, UNIDIRECTIONAL);
+                m_csaBeta.setCurrentDirection(Channel::CH4, UNIDIRECTIONAL);
             }
 			output = output + "\"PORT_V\":["; //Open group
 			// ioSense.digitalWrite(pinsSense::MUX_SEL2, LOW); //Read voltages
             if(initA == true) {
-                // csaAlpha.enableChannel(Channel::CH1, true); //Enable all channels
-                // csaAlpha.enableChannel(Channel::CH2, true);
-                // csaAlpha.enableChannel(Channel::CH3, true);
-                // csaAlpha.enableChannel(Channel::CH4, true);
+                // m_csaAlpha.enableChannel(Channel::CH1, true); //Enable all channels
+                // m_csaAlpha.enableChannel(Channel::CH2, true);
+                // m_csaAlpha.enableChannel(Channel::CH3, true);
+                // m_csaAlpha.enableChannel(Channel::CH4, true);
                 for(int i = 0; i < 4; i++){ //Increment through all ports
                     bool err = false;
-                    float val = csaAlpha.getBusVoltage(Channel::CH1 + i, true, err); //Get bus voltage with averaging 
+                    float val = m_csaAlpha.getBusVoltage(Channel::CH1 + i, true, err); //Get bus voltage with averaging 
                     if(!err) output = output + String(val, 6); //If no error, report as normal
                     else {
                         throwError(CSA_OB_READ_FAIL | 0xA00); //Throw read error for CSA A
@@ -417,7 +419,7 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
                 // m_timeProvider.delay(1000); //Wait for new data //DEBUG!
                 for(int i = 0; i < 4; i++){ //Increment through all ports
                     bool err = false;
-                    float val = csaBeta.getBusVoltage(Channel::CH1 + i, true, err); //Get bus voltage with averaging 
+                    float val = m_csaBeta.getBusVoltage(Channel::CH1 + i, true, err); //Get bus voltage with averaging 
                     if(!err) output = output + String(val, 6); //If no error, report as normal
                     else {
                         throwError(CSA_OB_READ_FAIL | 0xB00); //Throw read error for CSA B
@@ -434,13 +436,13 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 			output = output + "],"; //Close group
 			output = output + "\"PORT_I\":["; //Open group
             if(initA == true) {
-                // csaAlpha.enableChannel(Channel::CH1, true); //Enable all channels
-                // csaAlpha.enableChannel(Channel::CH2, true);
-                // csaAlpha.enableChannel(Channel::CH3, true);
-                // csaAlpha.enableChannel(Channel::CH4, true);
+                // m_csaAlpha.enableChannel(Channel::CH1, true); //Enable all channels
+                // m_csaAlpha.enableChannel(Channel::CH2, true);
+                // m_csaAlpha.enableChannel(Channel::CH3, true);
+                // m_csaAlpha.enableChannel(Channel::CH4, true);
                 for(int i = 0; i < 4; i++){ //Increment through all ports
                     bool err = false;
-                    float val = csaAlpha.getCurrent(Channel::CH1 + i, true, err); //Get current with averaging
+                    float val = m_csaAlpha.getCurrent(Channel::CH1 + i, true, err); //Get current with averaging
                     if(!err) output = output + String(val, 6); //If no error, report as normal
                     else {
                         throwError(CSA_OB_READ_FAIL | 0xA00); //Throw read error for CSA A
@@ -455,13 +457,13 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
             }
 
 			if(initB == true) {
-                // csaBeta.enableChannel(Channel::CH1, true); //Enable all channels
-                // csaBeta.enableChannel(Channel::CH2, true);
-                // csaBeta.enableChannel(Channel::CH3, true);
-                // csaBeta.enableChannel(Channel::CH4, true);
+                // m_csaBeta.enableChannel(Channel::CH1, true); //Enable all channels
+                // m_csaBeta.enableChannel(Channel::CH2, true);
+                // m_csaBeta.enableChannel(Channel::CH3, true);
+                // m_csaBeta.enableChannel(Channel::CH4, true);
                 for(int i = 0; i < 4; i++){ //Increment through all ports
                     bool err = false;
-                    float val = csaBeta.getCurrent(Channel::CH1 + i, true, err); //Get current with averaging
+                    float val = m_csaBeta.getCurrent(Channel::CH1 + i, true, err); //Get current with averaging
                     if(!err) output = output + String(val, 6); //If no error, report as normal
                     else {
                         throwError(CSA_OB_READ_FAIL | 0xB00); //Throw read error for CSA B
@@ -477,13 +479,13 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 			output = output + "],"; //Close group
             output = output + "\"AVG_P\":["; //Open group
             if(lastAccReset == 0) { //If unknown time since last reset, clear accumulators on csa Alpha
-                csaAlpha.update(true); 
+                m_csaAlpha.update(true); 
                 lastAccReset = getTime(); //Update time of reset
             }
             if(initA == true) {
                 for(int i = 0; i < 4; i++){ //Increment through all ports
                     bool err = false;
-                    float val = csaAlpha.getPowerAvg(Channel::CH1 + i, err); //Get bus power
+                    float val = m_csaAlpha.getPowerAvg(Channel::CH1 + i, err); //Get bus power
                     if(!err) output = output + String(val); //If no error, report as normal
                     else {
                         throwError(CSA_OB_READ_FAIL | 0xA00); //Throw read error for CSA A
@@ -499,7 +501,7 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
             output = output + "],"; //Close group
             output = output + "\"LAST_CLR\":" + String((int)lastAccReset) + ","; //Append the time of the last accumulator clear
             if((getTime() - lastAccReset) > 86400 && (getTime() % 86400) < 3600) { //If it is zero hour in UTC and it has been more than 24 hours since the last reset, clear accumulators 
-                csaAlpha.update(true); 
+                m_csaAlpha.update(true); 
                 lastAccReset = getTime(); //Update time of reset
             }
 			
@@ -1533,11 +1535,11 @@ bool Kestrel::testForBat()
     m_ioOB.pinMode(PinsOB::CSA_EN, OUTPUT);
     m_ioOB.digitalWrite(PinsOB::CE, HIGH); //Disable charging
     m_ioOB.digitalWrite(PinsOB::CSA_EN, HIGH); //Enable voltage sense
-    csaAlpha.enableChannel(CH1, true);
-    csaAlpha.update(); //Force new readings 
+    m_csaAlpha.enableChannel(CH1, true);
+    m_csaAlpha.update(); //Force new readings 
     m_timeProvider.delay(5000); //Wait for cap to discharge 
-    // csaAlpha.SetCurrentDirection(CH1, BIDIRECTIONAL);
-    float vBat = csaAlpha.getBusVoltage(CH1);
+    // m_csaAlpha.SetCurrentDirection(CH1, BIDIRECTIONAL);
+    float vBat = m_csaAlpha.getBusVoltage(CH1);
     m_ioOB.digitalWrite(PinsOB::CE, LOW); //Turn charging back on
     bool result = false;
     if(vBat < 2.0) { //If less than 2V (min bat voltage) give error 
@@ -1626,11 +1628,11 @@ bool Kestrel::configTalonSense()
     m_serialDebug.println("CONFIG TALON SENSE"); //DEBUG!
     bool currentGlob = enableI2C_Global(false);
 	bool currentOB = enableI2C_OB(true);
-    csaBeta.setCurrentDirection(CH4, UNIDIRECTIONAL); //Bulk voltage, unidirectional
-	csaBeta.enableChannel(CH1, false); //Disable all channels but 4
-	csaBeta.enableChannel(CH2, false);
-	csaBeta.enableChannel(CH3, false);
-	csaBeta.enableChannel(CH4, true);
+    m_csaBeta.setCurrentDirection(CH4, UNIDIRECTIONAL); //Bulk voltage, unidirectional
+	m_csaBeta.enableChannel(CH1, false); //Disable all channels but 4
+	m_csaBeta.enableChannel(CH2, false);
+	m_csaBeta.enableChannel(CH3, false);
+	m_csaBeta.enableChannel(CH4, true);
     enableI2C_Global(currentGlob); //Reset to previous state
     enableI2C_OB(currentOB); 
     // enableI2C_Global(true); //Connect all together 
