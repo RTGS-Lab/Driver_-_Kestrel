@@ -30,8 +30,8 @@ Kestrel::Kestrel(ITimeProvider& timeProvider,
                  IIOExpander& ioTalon,
                  ICurrentSenseAmplifier& csaAlpha,
                  ICurrentSenseAmplifier& csaBeta,
-                 bool useSensors) : 
-                 led(0x52), 
+                 ILed& led,
+                 bool useSensors) :  
                  m_csaAlpha(csaAlpha), 
                  m_csaBeta(csaBeta), 
                  m_timeProvider(timeProvider), 
@@ -42,7 +42,8 @@ Kestrel::Kestrel(ITimeProvider& timeProvider,
                  m_serialDebug(serialDebug),
                  m_serialSdi12(serialSdi12),
                  m_ioOB(ioOB),
-                 m_ioTalon(ioTalon)
+                 m_ioTalon(ioTalon),
+                 m_led(led)
 {
 	// port = talonPort; //Copy to local
 	// version = hardwareVersion; //Copy to local
@@ -80,15 +81,15 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     // m_timeProvider.delay(100); //DEBUG! For GPS
     m_ioOB.pinMode(PinsOB::LED_EN, OUTPUT);
 	m_ioOB.digitalWrite(PinsOB::LED_EN, LOW); //Turn on LED indicators 
-    led.begin();
+    m_led.begin();
     if(!initDone) { //Only set state if not done already
-        led.setOutputMode(OpenDrain); //Set device to use open drain outputs
-        led.setGroupMode(Blink); //Set system to blinking mode
-        led.setOutputArray(Off); //Turn all off by default
-        led.setBrightnessArray(ledBrightness); //Set all LEDs to 50% max brightness
-        // led.setGroupBrightness(ledBrightness); //Set to 50% brightness
-        led.setGroupBlinkPeriod(ledPeriod); //Set blink period to specified number of ms
-        led.setGroupOnTime(ledOnTime); //Set on time for each blinking period 
+        m_led.setOutputMode(ILed::IOutputMode::OpenDrain); //Set device to use open drain outputs
+        m_led.setGroupMode(ILed::IGroupMode::Blink); //Set system to blinking mode
+        m_led.setOutputArray(ILed::IPortState::Off); //Turn all off by default
+        m_led.setBrightnessArray(ledBrightness); //Set all LEDs to 50% max brightness
+        // m_led.setGroupBrightness(ledBrightness); //Set to 50% brightness
+        m_led.setGroupBlinkPeriod(ledPeriod); //Set blink period to specified number of ms
+        m_led.setGroupOnTime(ledOnTime); //Set on time for each blinking period 
     }
     //0b00000000 = SERIAL_8N1 defined in hal/inc/usart_hal.h
     m_serialSdi12.begin(1200, 0b00000000); //Initialize SDI12 serial port //DEBUG! - Used to fix wakeup issue
@@ -1361,8 +1362,8 @@ bool Kestrel::statLED(bool state)
 {
     // bool currentGlob = enableI2C_Global(false);
 	// bool currentOB = enableI2C_OB(true);
-    // if(state) led.setOutput(7, On); //Turn stat on
-    // else led.setOutput(7, Off); //Turn stat off
+    // if(state) m_led.setOutput(7, On); //Turn stat on
+    // else m_led.setOutput(7, ILed::IPortState::Off); //Turn stat off
     // enableI2C_Global(currentGlob); //Reset to previous state
     // enableI2C_OB(currentOB);
     if(state) { //Assert control and set color to orange 
@@ -1380,137 +1381,137 @@ bool Kestrel::setIndicatorState(uint8_t ledBank, uint8_t mode)
     bool currentGlob = enableI2C_Global(false);
 	bool currentOB = enableI2C_OB(true);
 
-    led.setBrightnessArray(ledBrightness); //Set all LEDs to 50% max brightness
-	led.setGroupBlinkPeriod(ledPeriod); //Set blink period to specified number of ms
-	led.setGroupOnTime(ledOnTime); //Set on time for each blinking period 
-    led.setBrightness(3, 25); //Reduce brightness of green LEDs //DEBUG!
-    led.setBrightness(5, 25);
-    led.setBrightness(1, 25);
+    m_led.setBrightnessArray(ledBrightness); //Set all LEDs to 50% max brightness
+	m_led.setGroupBlinkPeriod(ledPeriod); //Set blink period to specified number of ms
+	m_led.setGroupOnTime(ledOnTime); //Set on time for each blinking period 
+    m_led.setBrightness(3, 25); //Reduce brightness of green LEDs //DEBUG!
+    m_led.setBrightness(5, 25);
+    m_led.setBrightness(1, 25);
     switch(ledBank) {
         case IndicatorLight::SENSORS:
             if(mode == IndicatorMode::PASS) {
-                led.setOutput(0, PWM); //Turn green on
-                led.setOutput(1, Off); //Turn amber off
-                led.setOutput(2, Off); //Turn red off
+                m_led.setOutput(0, ILed::IPortState::PWM); //Turn green on
+                m_led.setOutput(1, ILed::IPortState::Off); //Turn amber off
+                m_led.setOutput(2, ILed::IPortState::Off); //Turn red off
             }
             if(mode == IndicatorMode::PREPASS) {
-                led.setOutput(0, Group); //Turn green on blinking
-                led.setOutput(1, Off); //Turn amber off
-                led.setOutput(2, Off); //Turn red off
+                m_led.setOutput(0, ILed::IPortState::Group); //Turn green on blinking
+                m_led.setOutput(1, ILed::IPortState::Off); //Turn amber off
+                m_led.setOutput(2, ILed::IPortState::Off); //Turn red off
             }
             if(mode == IndicatorMode::WAITING) {
-                led.setOutput(0, Off); //Turn green off
-                led.setOutput(1, Group); //Blink amber with group
-                led.setOutput(2, Off); //Turn red off
+                m_led.setOutput(0, ILed::IPortState::Off); //Turn green off
+                m_led.setOutput(1, ILed::IPortState::Group); //Blink amber with group
+                m_led.setOutput(2, ILed::IPortState::Off); //Turn red off
             }
             if(mode == IndicatorMode::ERROR) {
-                led.setOutput(0, Off); //Turn green off
-                led.setOutput(1, PWM); //Turn amber on
-                led.setOutput(2, Off); //Turn red on
+                m_led.setOutput(0, ILed::IPortState::Off); //Turn green off
+                m_led.setOutput(1, ILed::IPortState::PWM); //Turn amber on
+                m_led.setOutput(2, ILed::IPortState::Off); //Turn red on
             }
             if(mode == IndicatorMode::ERROR_CRITICAL) {
-                led.setOutput(0, Off); //Turn green off
-                led.setOutput(1, Off); //Turn amber off
-                led.setOutput(2, PWM); //Turn red on
+                m_led.setOutput(0, ILed::IPortState::Off); //Turn green off
+                m_led.setOutput(1, ILed::IPortState::Off); //Turn amber off
+                m_led.setOutput(2, ILed::IPortState::PWM); //Turn red on
             }
             break;
         case IndicatorLight::GPS:
             if(mode == IndicatorMode::PASS) {
-                led.setOutput(4, Off); //Turn amber off
-                led.setOutput(3, PWM); //Turn green on
+                m_led.setOutput(4, ILed::IPortState::Off); //Turn amber off
+                m_led.setOutput(3, ILed::IPortState::PWM); //Turn green on
             }
             if(mode == IndicatorMode::PREPASS) {
-                led.setOutput(4, Off); //Turn amber off
-                led.setOutput(3, Group); //Blink green with group
+                m_led.setOutput(4, ILed::IPortState::Off); //Turn amber off
+                m_led.setOutput(3, ILed::IPortState::Group); //Blink green with group
             }
             if(mode == IndicatorMode::WAITING) {
-                led.setOutput(4, Group); //Blink amber with group
-                led.setOutput(3, Off); //Turn green off
+                m_led.setOutput(4, ILed::IPortState::Group); //Blink amber with group
+                m_led.setOutput(3, ILed::IPortState::Off); //Turn green off
             }
             if(mode == IndicatorMode::ERROR) {
-                led.setOutput(4, PWM); //Turn amber on
-                led.setOutput(3, Off); //Turn green off
+                m_led.setOutput(4, ILed::IPortState::PWM); //Turn amber on
+                m_led.setOutput(3, ILed::IPortState::Off); //Turn green off
             }
             if(mode == IndicatorMode::ERROR_CRITICAL) {
-                led.setOutput(4, PWM); //Turn amber on
-                led.setOutput(3, Off); //Turn green off
+                m_led.setOutput(4, ILed::IPortState::PWM); //Turn amber on
+                m_led.setOutput(3, ILed::IPortState::Off); //Turn green off
             }
             break;
         case IndicatorLight::CELL:
             if(mode == IndicatorMode::PASS) {
-                led.setOutput(6, Off); //Turn amber off
-                led.setOutput(5, PWM); //Turn green on
+                m_led.setOutput(6, ILed::IPortState::Off); //Turn amber off
+                m_led.setOutput(5, ILed::IPortState::PWM); //Turn green on
             }
             if(mode == IndicatorMode::PREPASS) {
-                led.setOutput(6, Off); //Turn amber off
-                led.setOutput(5, Group); //Blink green with group
+                m_led.setOutput(6, ILed::IPortState::Off); //Turn amber off
+                m_led.setOutput(5, ILed::IPortState::Group); //Blink green with group
             }
             if(mode == IndicatorMode::WAITING) {
-                led.setOutput(6, Group); //Blink amber with group
-                led.setOutput(5, Off); //Turn green off
+                m_led.setOutput(6, ILed::IPortState::Group); //Blink amber with group
+                m_led.setOutput(5, ILed::IPortState::Off); //Turn green off
             }
             if(mode == IndicatorMode::ERROR) {
-                led.setOutput(6, PWM); //Turn amber on
-                led.setOutput(5, Off); //Turn green off
+                m_led.setOutput(6, ILed::IPortState::PWM); //Turn amber on
+                m_led.setOutput(5, ILed::IPortState::Off); //Turn green off
             }
             if(mode == IndicatorMode::ERROR_CRITICAL) {
-                led.setOutput(6, PWM); //Turn amber on
-                led.setOutput(5, Off); //Turn green off
+                m_led.setOutput(6, ILed::IPortState::PWM); //Turn amber on
+                m_led.setOutput(5, ILed::IPortState::Off); //Turn green off
             }
             break;
         case IndicatorLight::STAT:
             if(mode == IndicatorMode::PASS) {
-                led.setOutput(7, Off); //Turn red off
+                m_led.setOutput(7, ILed::IPortState::Off); //Turn red off
             }
             if(mode == IndicatorMode::PREPASS) {
-                led.setOutput(7, Group); //Blinking
+                m_led.setOutput(7, ILed::IPortState::Group); //Blinking
             }
             if(mode == IndicatorMode::WAITING) {
-                led.setOutput(7, Group); //Blinking
+                m_led.setOutput(7, ILed::IPortState::Group); //Blinking
             }
             if(mode == IndicatorMode::ERROR) {
-                led.setOutput(7, On); //Solid
+                m_led.setOutput(7, ILed::IPortState::On); //Solid
             }
             if(mode == IndicatorMode::ERROR_CRITICAL) {
-                led.setOutput(7, Group); //Blinking
+                m_led.setOutput(7, ILed::IPortState::Group); //Blinking
             }
             break;
         case IndicatorLight::ALL:
             if(mode == IndicatorMode::WAITING) {
-                // led.setOutputArray(Off); //Turn all LEDs off //DEBUG!
-                // led.setBrightness(6, 50);
-                // led.setBrightness(4, 50);
-                // led.setBrightness(1, 50);
-                for(int i = 0; i < 6; i++) led.setOutput(i, Off); //Turn off all but Stat LED
-                led.setOutput(6, Group); //Set CELL amber to blink
-                led.setOutput(4, Group); //Set GPS amber to blink
-                led.setOutput(1, Group); //Set SENSOR amber to blink
+                // m_led.setOutputArray(ILed::IPortState::Off); //Turn all LEDs off //DEBUG!
+                // m_led.setBrightness(6, 50);
+                // m_led.setBrightness(4, 50);
+                // m_led.setBrightness(1, 50);
+                for(int i = 0; i < 6; i++) m_led.setOutput(i, ILed::IPortState::Off); //Turn off all but Stat LED
+                m_led.setOutput(6, ILed::IPortState::Group); //Set CELL amber to blink
+                m_led.setOutput(4, ILed::IPortState::Group); //Set GPS amber to blink
+                m_led.setOutput(1, ILed::IPortState::Group); //Set SENSOR amber to blink
             }
             if(mode == IndicatorMode::NONE) {
-                led.setOutputArray(Off); //Turn all LEDs off 
+                m_led.setOutputArray(ILed::IPortState::Off); //Turn all LEDs off 
             }
             if(mode == IndicatorMode::INIT) {
-                // led.setOutputArray(Off); //Turn all LEDs off //DEBUG!
-                // led.setOutput(1, Group); //Blink amber with group
-                // led.setOutput(2, Group); //Blink red with group
-                // led.setOutput(6, Group); //Blink amber with group
-                // led.setOutput(4, Group); //Blink amber with group
-                // for(int i = 0; i < 6; i++) led.setOutput(i, Off); //Turn off all but Stat LED
-                led.setOutputArray(Group); //Turn all LEDs to group blink
-                // for(int i = 0; i < 6; i++) led.setOutput(i, Group); //Control all but Stat LED
-                led.setGroupBlinkPeriod(250); //Set to fast blinking
-	            led.setGroupOnTime(25); 
+                // m_led.setOutputArray(ILed::IPortState::Off); //Turn all LEDs off //DEBUG!
+                // m_led.setOutput(1, ILed::IPortState::Group); //Blink amber with group
+                // m_led.setOutput(2, ILed::IPortState::Group); //Blink red with group
+                // m_led.setOutput(6, ILed::IPortState::Group); //Blink amber with group
+                // m_led.setOutput(4, ILed::IPortState::Group); //Blink amber with group
+                // for(int i = 0; i < 6; i++) m_led.setOutput(i, ILed::IPortState::Off); //Turn off all but Stat LED
+                m_led.setOutputArray(ILed::IPortState::Group); //Turn all LEDs to group blink
+                // for(int i = 0; i < 6; i++) m_led.setOutput(i, ILed::IPortState::Group); //Control all but Stat LED
+                m_led.setGroupBlinkPeriod(250); //Set to fast blinking
+	            m_led.setGroupOnTime(25); 
             }
             if(mode == IndicatorMode::IDLE) {
-                // led.setOutputArray(Group); //Turn all LEDs to group blink
-                for(int i = 0; i < 6; i++) led.setOutput(i, Group); //Control all but Stat LED
+                // m_led.setOutputArray(ILed::IPortState::Group); //Turn all LEDs to group blink
+                for(int i = 0; i < 6; i++) m_led.setOutput(i, ILed::IPortState::Group); //Control all but Stat LED
                 //Allow to be normal blinking 
             }
             if(mode == IndicatorMode::COMMAND) {
-                // led.setOutputArray(Group); //Turn all LEDs to group blink
-                for(int i = 0; i < 6; i++) led.setOutput(i, Group); //Control all but Stat LED
-                led.setGroupBlinkPeriod(2000); //Set to very slow blinking
-	            led.setGroupOnTime(1000);  
+                // m_led.setOutputArray(ILed::IPortState::Group); //Turn all LEDs to group blink
+                for(int i = 0; i < 6; i++) m_led.setOutput(i, ILed::IPortState::Group); //Control all but Stat LED
+                m_led.setGroupBlinkPeriod(2000); //Set to very slow blinking
+	            m_led.setGroupOnTime(1000);  
             }
             break;
     }
@@ -1658,7 +1659,7 @@ int Kestrel::sleep()
             config.wakePinMode = IInterruptMode::FALLING; //Trigger on falling clock pulse
             // enableSD(false); //Turn off SD power
             m_ioOB.digitalWrite(PinsOB::LED_EN, HIGH); //Disable LEDs (if not done already) 
-            led.sleep(true); //Put LED driver into low power mode 
+            m_led.sleep(true); //Put LED driver into low power mode 
             if(!gps.powerOffWithInterrupt(3600000, VAL_RXM_PMREQ_WAKEUPSOURCE_EXTINT0)) throwError(GPS_READ_FAIL); //Shutdown for an hour unless woken up via pin trip
 
             // result = m_system.sleep(config);
@@ -1678,7 +1679,7 @@ int Kestrel::sleep()
             // enableSD(false); //Turn off SD power
             enableAuxPower(false); //Turn all aux power off
             m_ioOB.digitalWrite(PinsOB::LED_EN, HIGH); //Disable LEDs (if not done already)
-            led.sleep(true); //Put LED driver into low power mode  
+            m_led.sleep(true); //Put LED driver into low power mode  
             // gps.powerOffWithInterrupt(3600000, VAL_RXM_PMREQ_WAKEUPSOURCE_EXTINT0); //Shutdown for an hour unless woken up via pin trip
 
             // result = m_system.sleep(config);
@@ -1698,7 +1699,7 @@ int Kestrel::sleep()
             config.wakePinMode = IInterruptMode::FALLING; //Trigger on falling clock pulse
             enableAuxPower(false); //Turn all aux power off
             m_ioOB.digitalWrite(PinsOB::LED_EN, HIGH); //Disable LEDs (if not done already) 
-            led.sleep(true); //Put LED driver into low power mode 
+            m_led.sleep(true); //Put LED driver into low power mode 
             // m_ioOB.digitalWrite(PinsOB::CSA_EN, LOW); //Disable CSAs //DEBUG! //FIX!
 
             // //SLEEP FRAM //FIX!

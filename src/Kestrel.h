@@ -68,6 +68,7 @@ Distributed as-is; no warranty is given.
 
 #include "../../FlightControl-hardware-dependencies/src/IIOExpander.h"
 #include "../../FlightControl-hardware-dependencies/src/ICurrentSenseAmplifier.h"
+#include "../../FlightControl-hardware-dependencies/src/ILed.h"
 
 namespace Pins { //Use for B402
 	constexpr uint16_t WD_HOLD  = D2;
@@ -212,6 +213,7 @@ class Kestrel: public Sensor
 				IIOExpander& ioTalon,
 				ICurrentSenseAmplifier& csaAlpha,
 				ICurrentSenseAmplifier& csaBeta,
+				ILed& led,
 				bool useSensors = false);
 		SFE_UBLOX_GNSS gps;
         String begin(time_t time, bool &criticalFault, bool &fault);
@@ -281,15 +283,14 @@ class Kestrel: public Sensor
 
 		ICurrentSenseAmplifier& m_csaAlpha;
 		ICurrentSenseAmplifier& m_csaBeta;
+
+		ILed& m_led;
 		
 		MCP79412 rtc;
 		VEML3328 als;
 		Adafruit_SHT4x atmos;
 		MXC6655 accel; 
 
-
-		
-		PCA9634 led;
 		const int ledBrightness = 75; //Default to 75% on
 		const int ledPeriod = 500; //Default to 500ms period
 		const int ledOnTime = 250; //Default to 50% duty cycle
