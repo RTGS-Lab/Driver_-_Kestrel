@@ -32,6 +32,7 @@ Kestrel::Kestrel(ITimeProvider& timeProvider,
                  ICurrentSenseAmplifier& csaBeta,
                  ILed& led,
                  IRtc& rtc,
+                 IAmbientLight& als,
                  bool useSensors) :  
                  m_csaAlpha(csaAlpha), 
                  m_csaBeta(csaBeta), 
@@ -45,7 +46,8 @@ Kestrel::Kestrel(ITimeProvider& timeProvider,
                  m_ioOB(ioOB),
                  m_ioTalon(ioTalon),
                  m_led(led),
-                 m_rtc(rtc)
+                 m_rtc(rtc),
+                 m_als(als)
 {
 	// port = talonPort; //Copy to local
 	// version = hardwareVersion; //Copy to local
@@ -217,14 +219,14 @@ String Kestrel::getData(time_t time)
         bool obState = enableI2C_OB(true); //Turn on internal I2C
         String output = "\"Kestrel\":{"; //Open JSON blob
         output = output + "\"ALS\":{";
-        int error = als.begin();
+        int error = m_als.begin();
         if(error == 0) {
             bool readState = false;
-            als.AutoRange(); //Get new values
+            m_als.autoRange(); //Get new values
             // m_timeProvider.delay(1000); //DEBUG!
             String alsStr[5]; 
             for(int i = 0; i < 5; i++) { //Grab values from each channel, check for error and insert nulls as appropriate 
-                float val = als.GetValue(static_cast<VEML3328::Channel>(i), readState); 
+                float val = m_als.getValue(static_cast<IAmbientLight::Channel>(i), readState); 
                 if(readState) {
                     alsStr[i] = "null"; //If error, report null
                     throwError(ALS_DATA_FAIL); //Throw error
@@ -514,10 +516,10 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 			throwError(CSA_OB_INIT_FAIL); //Throw error for global CSA failure
 		}
         output = output + "\"ALS\":";
-        int error = als.begin();
+        int error = m_als.begin();
         if(error == 0) {
-            als.AutoRange();
-            output = output + String(als.GetLux()) + ","; //appenbd ALS results 
+            m_als.autoRange();
+            output = output + String(m_als.getLux()) + ","; //appenbd ALS results 
         }
         else {
             output = output + "null,";

@@ -70,6 +70,7 @@ Distributed as-is; no warranty is given.
 #include "../../FlightControl-hardware-dependencies/src/ICurrentSenseAmplifier.h"
 #include "../../FlightControl-hardware-dependencies/src/ILed.h"
 #include "../../FlightControl-hardware-dependencies/src/IRtc.h"
+#include "../../FlightControl-hardware-dependencies/src/IAmbientLight.h"
 
 namespace Pins { //Use for B402
 	constexpr uint16_t WD_HOLD  = D2;
@@ -216,6 +217,7 @@ class Kestrel: public Sensor
 				ICurrentSenseAmplifier& csaBeta,
 				ILed& led,
 				IRtc& rtc,
+				IAmbientLight& als,
 				bool useSensors = false);
 		SFE_UBLOX_GNSS gps;
         String begin(time_t time, bool &criticalFault, bool &fault);
@@ -289,7 +291,7 @@ class Kestrel: public Sensor
 		ILed& m_led;
 		
 		IRtc& m_rtc;
-		VEML3328 als;
+		IAmbientLight& m_als;
 		Adafruit_SHT4x atmos;
 		MXC6655 accel; 
 
