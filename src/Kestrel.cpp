@@ -31,6 +31,7 @@ Kestrel::Kestrel(ITimeProvider& timeProvider,
                  ICurrentSenseAmplifier& csaAlpha,
                  ICurrentSenseAmplifier& csaBeta,
                  ILed& led,
+                 IRtc& rtc,
                  bool useSensors) :  
                  m_csaAlpha(csaAlpha), 
                  m_csaBeta(csaBeta), 
@@ -43,7 +44,8 @@ Kestrel::Kestrel(ITimeProvider& timeProvider,
                  m_serialSdi12(serialSdi12),
                  m_ioOB(ioOB),
                  m_ioTalon(ioTalon),
-                 m_led(led)
+                 m_led(led),
+                 m_rtc(rtc)
 {
 	// port = talonPort; //Copy to local
 	// version = hardwareVersion; //Copy to local
@@ -95,11 +97,11 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     m_serialSdi12.begin(1200, 0b00000000); //Initialize SDI12 serial port //DEBUG! - Used to fix wakeup issue
     // setIndicatorState(IndicatorLight::ALL,IndicatorMode::WAITING); //Set all to blinking wait
     m_gpio.pinMode(Pins::Clock_INT, IPinMode::INPUT); //Make sure interrupt pin is always an input
-    if(rtc.begin(true) == 0) criticalFault = true; //Use with external oscilator, set critical fault if not able to connect 
+    if(m_rtc.begin(true) == 0) criticalFault = true; //Use with external oscilator, set critical fault if not able to connect 
     else {
-        rtc.enableAlarm(false, 0); //Disable all alarms on startup //DEBUG! Use to prevent alarm 1 from ever being activated 
-        rtc.enableAlarm(false, 1); 
-        rtc.setMode(MCP79412::Mode::Normal); //Make sure to enforce normal mode
+        m_rtc.enableAlarm(false, 0); //Disable all alarms on startup //DEBUG! Use to prevent alarm 1 from ever being activated 
+        m_rtc.enableAlarm(false, 1); 
+        m_rtc.setMode(IRtc::Mode::Normal); //Make sure to enforce normal mode
     }
     //Perform wakeup in case switched off already
     m_serialDebug.println("Wake GPS"); //DEBUG!
@@ -188,22 +190,22 @@ String Kestrel::getErrors()
 		output = output + "\"0x" + String(errors[i], HEX) + "\","; //Add each error code
 		errors[i] = 0; //Clear errors as they are read
 	}
-    for(int i = 0; i < min(sizeof(rtc.errors), rtc.numErrors); i++) { //Interate rtc errors
-		output = output + "\"0x" + String(rtc.errors[i], HEX) + "\","; //Add each error code
-		rtc.errors[i] = 0; //Clear errors as they are read
+    for(int i = 0; i < min(sizeof(m_rtc.errors), m_rtc.numErrors); i++) { //Interate rtc errors
+		output = output + "\"0x" + String(m_rtc.errors[i], HEX) + "\","; //Add each error code
+		m_rtc.errors[i] = 0; //Clear errors as they are read
 	}
 	if(output.substring(output.length() - 1).equals(",")) {
 		output = output.substring(0, output.length() - 1); //Trim trailing ','
 	}
 	output = output + "],"; //close codes pair
 	output =  output + "\"OW\":"; //Open state pair
-	if(numErrors > MAX_NUM_ERRORS || rtc.numErrors > sizeof(rtc.errors)) output = output + "1,"; //If overwritten, indicate the overwrite is true
+	if(numErrors > MAX_NUM_ERRORS || m_rtc.numErrors > sizeof(m_rtc.errors)) output = output + "1,"; //If overwritten, indicate the overwrite is true
 	else output = output + "0,"; //Otherwise set it as clear
-	output = output + "\"NUM\":" + String(numErrors + rtc.numErrors); //Append number of errors
+	output = output + "\"NUM\":" + String(numErrors + m_rtc.numErrors); //Append number of errors
 	// output = output + "\"Pos\":[" + String(talonPort + 1) + "," + String(sensorPort + 1) + "]"; //Concatonate position 
 	output = output + "}"; //CLOSE JSON BLOB
 	numErrors = 0; //Clear error count
-    rtc.numErrors = 0; 
+    m_rtc.numErrors = 0; 
 	return output;
 }
 
@@ -277,7 +279,7 @@ String Kestrel::getMetadata()
 
     // }
 
-    String rtcUUID = rtc.getUUIDString(); 
+    String rtcUUID = m_rtc.getUUIDString(); 
     if(!rtcUUID.equals("null")) rtcUUID = "\"" + rtcUUID + "\""; //If not null, wrap with quotes for JSON, otherwise leave as null 
     metadata = metadata + "\"RTC UUID\":" + rtcUUID + ","; //Append RTC UUID
 
@@ -322,12 +324,12 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 		//TBD
         if(accelUsed == AccelType::MXC6655) output = output + "\"Accel_Offset\":[" + String(accel.offset[0]) + "," + String(accel.offset[1]) + "," + String(accel.offset[2]) + "],"; 
         if(accelUsed == AccelType::BMA456) output = output + "\"Accel_Offset\":[0,0,0],"; 
-        uint8_t rtcConfigA = (rtc.readByte(0) & 0x80); //Read in ST bit
-        rtcConfigA = rtcConfigA | ((rtc.readByte(3) & 0x38) << 1); //Read in OSCRUN, PWRFAIL, VBATEN bits
-        uint8_t rtcConfigB = rtc.readByte(7); //Read in control byte
-        uint8_t rtcConfigC = rtc.readByte(8); //Read in trim byte
-        uint8_t rtcConfigD = rtc.readByte(0x0D); //Read in ALARM0 reg
-        uint8_t rtcConfigE = rtc.readByte(0x14); //Read in ALARM1 reg
+        uint8_t rtcConfigA = (m_rtc.readByte(0) & 0x80); //Read in ST bit
+        rtcConfigA = rtcConfigA | ((m_rtc.readByte(3) & 0x38) << 1); //Read in OSCRUN, PWRFAIL, VBATEN bits
+        uint8_t rtcConfigB = m_rtc.readByte(7); //Read in control byte
+        uint8_t rtcConfigC = m_rtc.readByte(8); //Read in trim byte
+        uint8_t rtcConfigD = m_rtc.readByte(0x0D); //Read in ALARM0 reg
+        uint8_t rtcConfigE = m_rtc.readByte(0x14); //Read in ALARM1 reg
         output = output + "\"RTC_Config\":[" + String(rtcConfigA) + "," + String(rtcConfigB) + "," + String(rtcConfigC) + "," + String(rtcConfigD) + "," + String(rtcConfigE) + "],"; //Concatonate to output
 	}
 
@@ -336,9 +338,9 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
         m_wire.beginTransmission(0x6F);
         uint8_t rtcError = m_wire.endTransmission();
         if(rtcError == 0) {
-            time_t currentTime = rtc.getTimeUnix();
+            time_t currentTime = m_rtc.getTimeUnix();
             m_timeProvider.delay(1200); //Wait at least 1 second (+20%)
-            if((rtc.getTimeUnix() - currentTime) == 0) throwError(RTC_OSC_FAIL); //If rtc is not incrementing, throw error 
+            if((m_rtc.getTimeUnix() - currentTime) == 0) throwError(RTC_OSC_FAIL); //If rtc is not incrementing, throw error 
         }
         else throwError(RTC_READ_FAIL | rtcError << 8); //Throw error since unable to communicate with RTC
 
@@ -929,7 +931,7 @@ uint8_t Kestrel::syncTime(bool force)
         throwError(CLOCK_UNAVAILABLE | 0x05); //OR with RTC indicator 
     }
     else { //Only read values in if able to connect to RTC
-        rtcTime = rtc.getTimeUnix();
+        rtcTime = m_rtc.getTimeUnix();
         m_serialDebug.print("RTC Time: ");
         m_serialDebug.println(rtcTime); //DEBUG!
         m_serialDebug.print("Particle Time: ");
@@ -1134,7 +1136,7 @@ uint8_t Kestrel::syncTime(bool force)
                     timeSourceB = t; //Record secondary source
                     m_serialDebug.println("SET PARTICLE RTC"); //DEBUG!
                     m_timeProvider.setTime(times[remoteSource]);  //Set 
-                    rtc.setTime(m_timeProvider.year(times[remoteSource]), m_timeProvider.month(times[remoteSource]), m_timeProvider.day(times[remoteSource]), m_timeProvider.hour(times[remoteSource]), m_timeProvider.minute(times[remoteSource]), m_timeProvider.second(times[remoteSource]));
+                    m_rtc.setTime(m_timeProvider.year(times[remoteSource]), m_timeProvider.month(times[remoteSource]), m_timeProvider.day(times[remoteSource]), m_timeProvider.hour(times[remoteSource]), m_timeProvider.minute(times[remoteSource]), m_timeProvider.second(times[remoteSource]));
                     timeGood = true; //Assert flag after time set
                     break; //Exit after the highest tier is used
                 }
@@ -1143,7 +1145,7 @@ uint8_t Kestrel::syncTime(bool force)
                 timeSourceB = TimeSource::NONE; //Set even if find no agreeing time
                 m_serialDebug.println("SET PARTICLE RTC"); //DEBUG!
                 m_timeProvider.setTime(times[remoteSource]);  //Set
-                rtc.setTime(m_timeProvider.year(times[remoteSource]), m_timeProvider.month(times[remoteSource]), m_timeProvider.day(times[remoteSource]), m_timeProvider.hour(times[remoteSource]), m_timeProvider.minute(times[remoteSource]), m_timeProvider.second(times[remoteSource]));
+                m_rtc.setTime(m_timeProvider.year(times[remoteSource]), m_timeProvider.month(times[remoteSource]), m_timeProvider.day(times[remoteSource]), m_timeProvider.hour(times[remoteSource]), m_timeProvider.minute(times[remoteSource]), m_timeProvider.second(times[remoteSource]));
             }
 
         }
@@ -1157,7 +1159,7 @@ uint8_t Kestrel::syncTime(bool force)
                             m_serialDebug.println("SET PARTICLE RTC"); //DEBUG!
                             m_timeProvider.setTime(times[i]);  //Set 
                             if(timeSourceA <= TimeSource::CELLULAR) { //If a tier 1 or 2 value is used, also update the kestrel RTC
-                                rtc.setTime(m_timeProvider.year(times[i]), m_timeProvider.month(times[i]), m_timeProvider.day(times[i]), m_timeProvider.hour(times[i]), m_timeProvider.minute(times[i]), m_timeProvider.second(times[i]));
+                                m_rtc.setTime(m_timeProvider.year(times[i]), m_timeProvider.month(times[i]), m_timeProvider.day(times[i]), m_timeProvider.hour(times[i]), m_timeProvider.minute(times[i]), m_timeProvider.second(times[i]));
                             }
                             timeGood = true; //Assert flag after time set
                             break; //Exit after the highest tier is used
@@ -1200,7 +1202,7 @@ uint8_t Kestrel::syncTime(bool force)
     // if(abs(cellTime - gpsTime) < maxTimeError && gpsTime != 0 && cellTime != 0) { //If both remote variables match, update the time no mater what the state of the rest are
     //     m_serialDebug.println("CLOCK SOURCE: GPS and Cell match");
     //     // time_t currentTime = m_timeProvider.now(); //Ensure sync and that local offset is not applied 
-    //     // rtc.setTime(m_timeProvider.year(currentTime), m_timeProvider.month(currentTime), m_timeProvider.day(currentTime), m_timeProvider.hour(currentTime), m_timeProvider.minute(currentTime), m_timeProvider.second(currentTime)); //Set RTC from Cell
+    //     // m_rtc.setTime(m_timeProvider.year(currentTime), m_timeProvider.month(currentTime), m_timeProvider.day(currentTime), m_timeProvider.hour(currentTime), m_timeProvider.minute(currentTime), m_timeProvider.second(currentTime)); //Set RTC from Cell
     //     if(cellTime != 0) { //DEBUG! RESTORE!
     //         time_t currentTime = cellTime; //Grab time from cell, even though it is old, to ensure correct time is being set //FIX!
     //         m_serialDebug.print("RTC Set Time: "); //DEBUG!
@@ -1209,7 +1211,7 @@ uint8_t Kestrel::syncTime(bool force)
     //         m_serialDebug.print(m_timeProvider.minute(currentTime));
     //         m_serialDebug.print(":");
     //         m_serialDebug.println(m_timeProvider.second(currentTime));
-    //         rtc.setTime(m_timeProvider.year(currentTime), m_timeProvider.month(currentTime), m_timeProvider.day(currentTime), m_timeProvider.hour(currentTime), m_timeProvider.minute(currentTime), m_timeProvider.second(currentTime)); //Set RTC from Cell
+    //         m_rtc.setTime(m_timeProvider.year(currentTime), m_timeProvider.month(currentTime), m_timeProvider.day(currentTime), m_timeProvider.hour(currentTime), m_timeProvider.minute(currentTime), m_timeProvider.second(currentTime)); //Set RTC from Cell
     //     }
         
     //     timeGood = true;
@@ -1236,7 +1238,7 @@ uint8_t Kestrel::syncTime(bool force)
         
     //     if(rtcTime > 1641016800) { //Jan 1, 2022, date seems to be reeasonable //FIX!
     //         m_serialDebug.println("CLOCK SOURCE: Stale RTC"); //DEBUG!
-    //         m_timeProvider.setTime(rtc.getTimeUnix()); //Set time from RTC   
+    //         m_timeProvider.setTime(m_rtc.getTimeUnix()); //Set time from RTC   
     //         timeGood = true;
     //         source = TimeSource::RTC;
     //         //Throw mismatch errors as needed //FIX!??
@@ -1331,7 +1333,7 @@ bool Kestrel::startTimer(time_t period)
     if(period == 0) period = defaultPeriod; //If no period is specified, assign default period 
     bool currentOB = enableI2C_OB(true);
     bool currentGlob = enableI2C_Global(false);
-    rtc.setAlarm(period); //Set alarm from current time
+    m_rtc.setAlarm(period); //Set alarm from current time
     timerStart = m_timeProvider.millis(); 
     m_serialDebug.print("Time Start: "); //DEBUG!
     m_serialDebug.println(timerStart);
@@ -1727,11 +1729,11 @@ int Kestrel::sleep()
     m_serialDebug.print("Sleep Time: ");
     m_serialDebug.println(m_timeProvider.millis()); 
     // m_serialDebug.print("RTC Regs: \tCRTL:0x");
-    // m_serialDebug.print(rtc.readByte(0x07), HEX); //DEBUG!
+    // m_serialDebug.print(m_rtc.readByte(0x07), HEX); //DEBUG!
     // m_serialDebug.print("\tALM0:0x");
-    // m_serialDebug.println(rtc.readByte(0x0D), HEX);  //DEBUG!
+    // m_serialDebug.println(m_rtc.readByte(0x0D), HEX);  //DEBUG!
     // m_serialDebug.print("\tAML1:0x");
-    // m_serialDebug.println(rtc.readByte(0x14), HEX);  //DEBUG!
+    // m_serialDebug.println(m_rtc.readByte(0x14), HEX);  //DEBUG!
 
     m_serialDebug.flush();
     m_timeProvider.delay(5000); //DEBUG!

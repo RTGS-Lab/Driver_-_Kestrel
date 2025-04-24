@@ -69,6 +69,7 @@ Distributed as-is; no warranty is given.
 #include "../../FlightControl-hardware-dependencies/src/IIOExpander.h"
 #include "../../FlightControl-hardware-dependencies/src/ICurrentSenseAmplifier.h"
 #include "../../FlightControl-hardware-dependencies/src/ILed.h"
+#include "../../FlightControl-hardware-dependencies/src/IRtc.h"
 
 namespace Pins { //Use for B402
 	constexpr uint16_t WD_HOLD  = D2;
@@ -214,6 +215,7 @@ class Kestrel: public Sensor
 				ICurrentSenseAmplifier& csaAlpha,
 				ICurrentSenseAmplifier& csaBeta,
 				ILed& led,
+				IRtc& rtc,
 				bool useSensors = false);
 		SFE_UBLOX_GNSS gps;
         String begin(time_t time, bool &criticalFault, bool &fault);
@@ -242,7 +244,7 @@ class Kestrel: public Sensor
 		String getMetadata();
 		String selfDiagnostic(uint8_t diagnosticLevel, time_t time);
 		uint8_t totalErrors() {
-			return numErrors + rtc.numErrors; 
+			return numErrors + m_rtc.numErrors; 
 		}
 		bool updateLocation(bool forceUpdate = false);
 		bool connectToCell();
@@ -286,7 +288,7 @@ class Kestrel: public Sensor
 
 		ILed& m_led;
 		
-		MCP79412 rtc;
+		IRtc& m_rtc;
 		VEML3328 als;
 		Adafruit_SHT4x atmos;
 		MXC6655 accel; 
