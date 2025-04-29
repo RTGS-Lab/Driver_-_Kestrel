@@ -47,13 +47,13 @@ Distributed as-is; no warranty is given.
 #define Kestrel_h
 
 #include <Sensor.h>
-#include <PCAL9535A.h>
-#include "../../PCA9634/src/PCA9634.h"
+//#include <PCAL9535A.h>
+//#include "../../PCA9634/src/PCA9634.h"
 // #include "MCP7940_Library/src/MCP7940.h"
-#include "../../Driver_-_MCP79412/src/MCP79412.h"
-#include "../../SparkFun_u-blox_GNSS_Arduino_Library/src/SparkFun_u-blox_GNSS_Arduino_Library.h"
-#include "../../PAC1932_Library/src/PAC1934.h"
-#include "../../VEML3328/src/VEML3328.h"
+//#include "../../Driver_-_MCP79412/src/MCP79412.h"
+//#include "../../SparkFun_u-blox_GNSS_Arduino_Library/src/SparkFun_u-blox_GNSS_Arduino_Library.h"
+//#include "../../PAC1932_Library/src/PAC1934.h"
+//#include "../../VEML3328/src/VEML3328.h"
 #include <Adafruit_SHT4x.h>
 #include <MXC6655.h>
 #include <arduino_bma456.h>

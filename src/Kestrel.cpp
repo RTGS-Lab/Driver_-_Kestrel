@@ -75,7 +75,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     bool obState = enableI2C_OB(true); //Turn on internal I2C
     if(m_ioOB.begin() != 0) criticalFault = true;
     if(m_ioTalon.begin() != 0) criticalFault = true;
-    m_ioTalon.safeMode(PCAL9535A::SAFEOFF); //DEBUG! //Turn safe mode off to speed up turn-off times for Talons
+    m_ioTalon.safeMode(IIOExpander::SAFEOFF); //DEBUG! //Turn safe mode off to speed up turn-off times for Talons
     enableAuxPower(true); //Turn on aux power 
     if(m_csaAlpha.begin() == false) { //If fails at default address, then try alt v1.9 address
         m_csaAlpha.setAddress(0x19);
@@ -83,7 +83,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
         //else THROW ERROR! FIX!
     }
     m_csaBeta.begin();
-    m_csaAlpha.setFrequency(Frequency::SPS_64); //Set to ensure at least 24 hours between accumulator rollover 
+    m_csaAlpha.setFrequency(IFrequency::CSA_SPS_64); //Set to ensure at least 24 hours between accumulator rollover 
     // m_timeProvider.delay(100); //DEBUG! For GPS
     m_ioOB.pinMode(PinsOB::LED_EN, OUTPUT);
 	m_ioOB.digitalWrite(PinsOB::LED_EN, LOW); //Turn on LED indicators 
@@ -122,7 +122,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
         m_serialDebug.println("GPS ERROR");
     }
     else {
-        m_gps.setI2COutput(COM_TYPE_UBX);
+        m_gps.setI2COutput(GPS_COM_TYPE_UBX); //Set to I2C output //COM_TYPE_UBX = 1
         m_gps.setNavigationFrequency(1); //Produce 1 solutions per second
         m_gps.setAutoPVT(false); //DEBUG!
         m_serialDebug.print("GPS Stats: "); //DEBUG!
@@ -270,7 +270,7 @@ String Kestrel::getMetadata()
     ////////// ADD GPS INFO
     // if(m_gps.begin() == false) throwError(GPS_INIT_FAIL);
     // else {
-    //     m_gps.setI2COutput(COM_TYPE_UBX); //Set the I2C port to output UBX only (turn off NMEA noise)
+    //     m_gps.setI2COutput(GPS_COM_TYPE_UBX); //Set the I2C port to output UBX only (turn off NMEA noise)
     //     uint8_t customPayload[MAX_PAYLOAD_SIZE]; // This array holds the payload data bytes. MAX_PAYLOAD_SIZE defaults to 256. The CFG_RATE payload is only 6 bytes!
     //     m_gps.setPacketCfgPayloadSize(MAX_PAYLOAD_SIZE);
     //     ubxPacket customCfg = {0, 0, 0, 0, 0, customPayload, 0, 0, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED};
@@ -350,7 +350,7 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 
         //GRAB TTFF FROM GPS
         enableAuxPower(true); //Make sure power is applied to GPS
-        uint8_t customPayload[MAX_PAYLOAD_SIZE]; // This array holds the payload data bytes. MAX_PAYLOAD_SIZE defaults to 256. The CFG_RATE payload is only 6 bytes!
+        uint8_t customPayload[MAX_PAYLOAD_SIZE]; // This array holds the payload data bytes. MAX_PAYLOAD_SIZE defaults to 256. The CFG_RATE payload is only 6 bytes! //#define MAX_PAYLOAD_SIZE 276 // We need >=250 bytes for getProtocolVersion on the NEO-F10N
         m_gps.setPacketCfgPayloadSize(MAX_PAYLOAD_SIZE);
         IUbxPacket customCfg = {0, 0, 0, 0, 0, customPayload, 0, 0, VALIDITY_NOT_DEFINED, VALIDITY_NOT_DEFINED};
         customCfg.cls = 0x01;  // Navigation Results Messages: Position, Speed, Time, Acceleration, Heading, DOP, SVs used // This is the message Class
@@ -358,7 +358,7 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
         customCfg.len = 0; // Setting the len (length) to zero let's us poll the current settings
         customCfg.startingSpot = 0; // Always set the startingSpot to zero (unless you really know what you are doing)
         uint16_t maxWait = 1500; // Wait for up to 250ms (Serial may need a lot longer e.g. 1100)
-        if (m_gps.sendCommand(&customCfg, maxWait) != SFE_UBLOX_STATUS_DATA_RECEIVED) {
+        if (m_gps.sendCommand(&customCfg, maxWait) != DATA_RECEIVED) {
             m_serialDebug.println("GPS READ FAIL"); //DEBUG!
             throwError(GPS_READ_FAIL); // We are expecting data and an ACK, throw error otherwise
         }
@@ -381,36 +381,36 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 			// adcSense.SetResolution(18); //Set to max resolution (we paid for it right?) 
             //Setup CSAs
             if(initA == true) {
-                m_csaAlpha.enableChannel(Channel::CH1, true); //Enable all channels
-                m_csaAlpha.enableChannel(Channel::CH2, true);
-                m_csaAlpha.enableChannel(Channel::CH3, true);
-                m_csaAlpha.enableChannel(Channel::CH4, true);
-                m_csaAlpha.setCurrentDirection(Channel::CH1, BIDIRECTIONAL);
-                m_csaAlpha.setCurrentDirection(Channel::CH2, UNIDIRECTIONAL);
-                m_csaAlpha.setCurrentDirection(Channel::CH3, UNIDIRECTIONAL);
-                m_csaAlpha.setCurrentDirection(Channel::CH4, UNIDIRECTIONAL);
+                m_csaAlpha.enableChannel(IChannel::CSA_CH1, true); //Enable all channels
+                m_csaAlpha.enableChannel(IChannel::CSA_CH2, true);
+                m_csaAlpha.enableChannel(IChannel::CSA_CH3, true);
+                m_csaAlpha.enableChannel(IChannel::CSA_CH4, true);
+                m_csaAlpha.setCurrentDirection(IChannel::CSA_CH1, CSA_BIDIRECTIONAL);
+                m_csaAlpha.setCurrentDirection(IChannel::CSA_CH2, CSA_UNIDIRECTIONAL);
+                m_csaAlpha.setCurrentDirection(IChannel::CSA_CH3, CSA_UNIDIRECTIONAL);
+                m_csaAlpha.setCurrentDirection(IChannel::CSA_CH4, CSA_UNIDIRECTIONAL);
             }
 
             if(initB == true) {
-                m_csaBeta.enableChannel(Channel::CH1, true); //Enable all channels
-                m_csaBeta.enableChannel(Channel::CH2, true);
-                m_csaBeta.enableChannel(Channel::CH3, true);
-                m_csaBeta.enableChannel(Channel::CH4, true);
-                m_csaBeta.setCurrentDirection(Channel::CH1, UNIDIRECTIONAL);
-                m_csaBeta.setCurrentDirection(Channel::CH2, UNIDIRECTIONAL);
-                m_csaBeta.setCurrentDirection(Channel::CH3, UNIDIRECTIONAL);
-                m_csaBeta.setCurrentDirection(Channel::CH4, UNIDIRECTIONAL);
+                m_csaBeta.enableChannel(IChannel::CSA_CH1, true); //Enable all channels
+                m_csaBeta.enableChannel(IChannel::CSA_CH2, true);
+                m_csaBeta.enableChannel(IChannel::CSA_CH3, true);
+                m_csaBeta.enableChannel(IChannel::CSA_CH4, true);
+                m_csaBeta.setCurrentDirection(IChannel::CSA_CH1, CSA_UNIDIRECTIONAL);
+                m_csaBeta.setCurrentDirection(IChannel::CSA_CH2, CSA_UNIDIRECTIONAL);
+                m_csaBeta.setCurrentDirection(IChannel::CSA_CH3, CSA_UNIDIRECTIONAL);
+                m_csaBeta.setCurrentDirection(IChannel::CSA_CH4, CSA_UNIDIRECTIONAL);
             }
 			output = output + "\"PORT_V\":["; //Open group
 			// ioSense.digitalWrite(pinsSense::MUX_SEL2, LOW); //Read voltages
             if(initA == true) {
-                // m_csaAlpha.enableChannel(Channel::CH1, true); //Enable all channels
-                // m_csaAlpha.enableChannel(Channel::CH2, true);
-                // m_csaAlpha.enableChannel(Channel::CH3, true);
-                // m_csaAlpha.enableChannel(Channel::CH4, true);
+                // m_csaAlpha.enableChannel(IChannel::CSA_CH1, true); //Enable all channels
+                // m_csaAlpha.enableChannel(IChannel::CSA_CH2, true);
+                // m_csaAlpha.enableChannel(IChannel::CSA_CH3, true);
+                // m_csaAlpha.enableChannel(IChannel::CSA_CH4, true);
                 for(int i = 0; i < 4; i++){ //Increment through all ports
                     bool err = false;
-                    float val = m_csaAlpha.getBusVoltage(Channel::CH1 + i, true, err); //Get bus voltage with averaging 
+                    float val = m_csaAlpha.getBusVoltage(IChannel::CSA_CH1 + i, true, err); //Get bus voltage with averaging 
                     if(!err) output = output + String(val, 6); //If no error, report as normal
                     else {
                         throwError(CSA_OB_READ_FAIL | 0xA00); //Throw read error for CSA A
@@ -426,7 +426,7 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
                 // m_timeProvider.delay(1000); //Wait for new data //DEBUG!
                 for(int i = 0; i < 4; i++){ //Increment through all ports
                     bool err = false;
-                    float val = m_csaBeta.getBusVoltage(Channel::CH1 + i, true, err); //Get bus voltage with averaging 
+                    float val = m_csaBeta.getBusVoltage(IChannel::CSA_CH1 + i, true, err); //Get bus voltage with averaging 
                     if(!err) output = output + String(val, 6); //If no error, report as normal
                     else {
                         throwError(CSA_OB_READ_FAIL | 0xB00); //Throw read error for CSA B
@@ -443,13 +443,13 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 			output = output + "],"; //Close group
 			output = output + "\"PORT_I\":["; //Open group
             if(initA == true) {
-                // m_csaAlpha.enableChannel(Channel::CH1, true); //Enable all channels
-                // m_csaAlpha.enableChannel(Channel::CH2, true);
-                // m_csaAlpha.enableChannel(Channel::CH3, true);
-                // m_csaAlpha.enableChannel(Channel::CH4, true);
+                // m_csaAlpha.enableChannel(IChannel::CSA_CH1, true); //Enable all channels
+                // m_csaAlpha.enableChannel(IChannel::CSA_CH2, true);
+                // m_csaAlpha.enableChannel(IChannel::CSA_CH3, true);
+                // m_csaAlpha.enableChannel(IChannel::CSA_CH4, true);
                 for(int i = 0; i < 4; i++){ //Increment through all ports
                     bool err = false;
-                    float val = m_csaAlpha.getCurrent(Channel::CH1 + i, true, err); //Get current with averaging
+                    float val = m_csaAlpha.getCurrent(IChannel::CSA_CH1 + i, true, err); //Get current with averaging
                     if(!err) output = output + String(val, 6); //If no error, report as normal
                     else {
                         throwError(CSA_OB_READ_FAIL | 0xA00); //Throw read error for CSA A
@@ -464,13 +464,13 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
             }
 
 			if(initB == true) {
-                // m_csaBeta.enableChannel(Channel::CH1, true); //Enable all channels
-                // m_csaBeta.enableChannel(Channel::CH2, true);
-                // m_csaBeta.enableChannel(Channel::CH3, true);
-                // m_csaBeta.enableChannel(Channel::CH4, true);
+                // m_csaBeta.enableChannel(IChannel::CSA_CH1, true); //Enable all channels
+                // m_csaBeta.enableChannel(IChannel::CSA_CH2, true);
+                // m_csaBeta.enableChannel(IChannel::CSA_CH3, true);
+                // m_csaBeta.enableChannel(IChannel::CSA_CH4, true);
                 for(int i = 0; i < 4; i++){ //Increment through all ports
                     bool err = false;
-                    float val = m_csaBeta.getCurrent(Channel::CH1 + i, true, err); //Get current with averaging
+                    float val = m_csaBeta.getCurrent(IChannel::CSA_CH1 + i, true, err); //Get current with averaging
                     if(!err) output = output + String(val, 6); //If no error, report as normal
                     else {
                         throwError(CSA_OB_READ_FAIL | 0xB00); //Throw read error for CSA B
@@ -492,7 +492,7 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
             if(initA == true) {
                 for(int i = 0; i < 4; i++){ //Increment through all ports
                     bool err = false;
-                    float val = m_csaAlpha.getPowerAvg(Channel::CH1 + i, err); //Get bus power
+                    float val = m_csaAlpha.getPowerAvg(IChannel::CSA_CH1 + i, err); //Get bus power
                     if(!err) output = output + String(val); //If no error, report as normal
                     else {
                         throwError(CSA_OB_READ_FAIL | 0xA00); //Throw read error for CSA A
@@ -1015,17 +1015,17 @@ uint8_t Kestrel::syncTime(bool force)
     // if(m_gps.begin() == false) throwError(GPS_INIT_FAIL);
     // else {
         sourceRequested[TimeSource::GPS] = true;
-        m_gps.setI2COutput(COM_TYPE_UBX); //Set the I2C port to output UBX only (turn off NMEA noise)
+        m_gps.setI2COutput(GPS_COM_TYPE_UBX); //Set the I2C port to output UBX only (turn off NMEA noise) //COM_TYPE_UBX
         
         m_gps.setPacketCfgPayloadSize(MAX_PAYLOAD_SIZE);
         IUbxPacket customCfg = {0, 0, 0, 0, 0, customPayload, 0, 0, VALIDITY_NOT_DEFINED, VALIDITY_NOT_DEFINED};
-        customCfg.cls = UBX_CLASS_NAV; // This is the message Class
+        customCfg.cls = 1; // This is the message Class //UBX_CLASS_NAV
         // customCfg.id = UBX_NAV_TIMELS; // This is the message ID
         customCfg.id = 0x21;   // UTC Time Solution;
         customCfg.len = 0; // Setting the len (length) to zero let's us poll the current settings
         customCfg.startingSpot = 0; // Always set the startingSpot to zero (unless you really know what you are doing)
         uint16_t maxWait = 1500; // Wait for up to 250ms (Serial may need a lot longer e.g. 1100)
-        if (m_gps.sendCommand(&customCfg, maxWait) != SFE_UBLOX_STATUS_DATA_RECEIVED) {
+        if (m_gps.sendCommand(&customCfg, maxWait) != DATA_RECEIVED) {
             m_serialDebug.println("GPS READ FAIL"); //DEBUG!
             throwError(GPS_READ_FAIL); // We are expecting data and an ACK, throw error otherwise
         }
@@ -1542,11 +1542,11 @@ bool Kestrel::testForBat()
     m_ioOB.pinMode(PinsOB::CSA_EN, OUTPUT);
     m_ioOB.digitalWrite(PinsOB::CE, HIGH); //Disable charging
     m_ioOB.digitalWrite(PinsOB::CSA_EN, HIGH); //Enable voltage sense
-    m_csaAlpha.enableChannel(CH1, true);
+    m_csaAlpha.enableChannel(CSA_CH1, true);
     m_csaAlpha.update(); //Force new readings 
     m_timeProvider.delay(5000); //Wait for cap to discharge 
-    // m_csaAlpha.SetCurrentDirection(CH1, BIDIRECTIONAL);
-    float vBat = m_csaAlpha.getBusVoltage(CH1);
+    // m_csaAlpha.SetCurrentDirection(CSA_CH1, CSA_BIDIRECTIONAL);
+    float vBat = m_csaAlpha.getBusVoltage(CSA_CH1);
     m_ioOB.digitalWrite(PinsOB::CE, LOW); //Turn charging back on
     bool result = false;
     if(vBat < 2.0) { //If less than 2V (min bat voltage) give error 
@@ -1635,11 +1635,11 @@ bool Kestrel::configTalonSense()
     m_serialDebug.println("CONFIG TALON SENSE"); //DEBUG!
     bool currentGlob = enableI2C_Global(false);
 	bool currentOB = enableI2C_OB(true);
-    m_csaBeta.setCurrentDirection(CH4, UNIDIRECTIONAL); //Bulk voltage, unidirectional
-	m_csaBeta.enableChannel(CH1, false); //Disable all channels but 4
-	m_csaBeta.enableChannel(CH2, false);
-	m_csaBeta.enableChannel(CH3, false);
-	m_csaBeta.enableChannel(CH4, true);
+    m_csaBeta.setCurrentDirection(CSA_CH4, CSA_UNIDIRECTIONAL); //Bulk voltage, unidirectional
+	m_csaBeta.enableChannel(CSA_CH1, false); //Disable all channels but 4
+	m_csaBeta.enableChannel(CSA_CH2, false);
+	m_csaBeta.enableChannel(CSA_CH3, false);
+	m_csaBeta.enableChannel(CSA_CH4, true);
     enableI2C_Global(currentGlob); //Reset to previous state
     enableI2C_OB(currentOB); 
     // enableI2C_Global(true); //Connect all together 
@@ -1800,7 +1800,7 @@ int Kestrel::wake()
                     m_serialDebug.println("GPS ERROR");
                 }
                 else {
-                    m_gps.setI2COutput(COM_TYPE_UBX);
+                    m_gps.setI2COutput(GPS_COM_TYPE_UBX); //COM_TYPE_UBX = 1
                     // m_gps.setAutoPVT(true); //DEBUG!
                     unsigned long localTime = m_timeProvider.millis();
                     while((m_gps.getFixType() < 2 || m_gps.getFixType() > 4) && !m_gps.getGnssFixOk() && (localTime - m_timeProvider.millis()) < 30000); //Wait up to 30 seconds to get a GPS fix, if not, move on
@@ -1830,7 +1830,7 @@ int Kestrel::wake()
                     m_serialDebug.println("GPS ERROR");
                 }
                 else {
-                    m_gps.setI2COutput(COM_TYPE_UBX);
+                    m_gps.setI2COutput(GPS_COM_TYPE_UBX); //COM_TYPE_UBX = 1
                     // m_gps.setAutoPVT(true); //DEBUG!
                     unsigned long localTime = m_timeProvider.millis();
                     while((m_gps.getFixType() < 2 || m_gps.getFixType() > 4) && !m_gps.getGnssFixOk() && (localTime - m_timeProvider.millis()) < 60000); //Wait up to 60 seconds to get a GPS fix, if not, move on
@@ -1863,7 +1863,7 @@ int Kestrel::wake()
             //     m_serialDebug.println("GPS ERROR");
             // }
             // else {
-            //     m_gps.setI2COutput(COM_TYPE_UBX);
+            //     m_gps.setI2COutput(GPS_COM_TYPE_UBX);
             //     // m_gps.setAutoPVT(true); //DEBUG!
             //     unsigned long localTime = m_timeProvider.millis();
             //     while((m_gps.getFixType() < 2 || m_gps.getFixType() > 4) && !m_gps.getGnssFixOk() && (localTime - m_timeProvider.millis()) < 60000); //Wait up to 60 seconds to get a GPS fix, if not, move on
