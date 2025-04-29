@@ -33,6 +33,7 @@ Kestrel::Kestrel(ITimeProvider& timeProvider,
                  ILed& led,
                  IRtc& rtc,
                  IAmbientLight& als,
+                 IGps& gps,
                  bool useSensors) :  
                  m_csaAlpha(csaAlpha), 
                  m_csaBeta(csaBeta), 
@@ -47,7 +48,8 @@ Kestrel::Kestrel(ITimeProvider& timeProvider,
                  m_ioTalon(ioTalon),
                  m_led(led),
                  m_rtc(rtc),
-                 m_als(als)
+                 m_als(als),
+                 m_gps(gps)
 {
 	// port = talonPort; //Copy to local
 	// version = hardwareVersion; //Copy to local
@@ -114,27 +116,27 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     m_timeProvider.delay(1000);
     m_ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
     m_timeProvider.delay(1000);
-    if(gps.begin() == false) {
+    if(m_gps.begin() == false) {
         criticalFault = true; //DEBUG! ??
         throwError(GPS_INIT_FAIL);
         m_serialDebug.println("GPS ERROR");
     }
     else {
-        gps.setI2COutput(COM_TYPE_UBX);
-        gps.setNavigationFrequency(1); //Produce 1 solutions per second
-        gps.setAutoPVT(false); //DEBUG!
+        m_gps.setI2COutput(COM_TYPE_UBX);
+        m_gps.setNavigationFrequency(1); //Produce 1 solutions per second
+        m_gps.setAutoPVT(false); //DEBUG!
         m_serialDebug.print("GPS Stats: "); //DEBUG!
-        m_serialDebug.print(gps.getNavigationFrequency());
+        m_serialDebug.print(m_gps.getNavigationFrequency());
         m_serialDebug.print("\t");
-        m_serialDebug.print(gps.getMeasurementRate());
+        m_serialDebug.print(m_gps.getMeasurementRate());
         m_serialDebug.print("\t");
-        m_serialDebug.println(gps.getNavigationRate());
+        m_serialDebug.println(m_gps.getNavigationRate());
         m_serialDebug.print("GPS Attitude: ");
-        m_serialDebug.print(gps.getATTroll());
+        m_serialDebug.print(m_gps.getATTroll());
         m_serialDebug.print("\t");
-        m_serialDebug.print(gps.getATTpitch());
+        m_serialDebug.print(m_gps.getATTpitch());
         m_serialDebug.print("\t\n");
-        m_serialDebug.print(gps.getATTheading());
+        m_serialDebug.print(m_gps.getATTheading());
     }
     /// AUTO ZERO ACCEL
     int accelInitError = accel.begin();
@@ -266,18 +268,18 @@ String Kestrel::getMetadata()
     bool obState = enableI2C_OB(true); //Turn on internal I2C
     String metadata = "\"Kestrel\":{";
     ////////// ADD GPS INFO
-    // if(gps.begin() == false) throwError(GPS_INIT_FAIL);
+    // if(m_gps.begin() == false) throwError(GPS_INIT_FAIL);
     // else {
-    //     gps.setI2COutput(COM_TYPE_UBX); //Set the I2C port to output UBX only (turn off NMEA noise)
+    //     m_gps.setI2COutput(COM_TYPE_UBX); //Set the I2C port to output UBX only (turn off NMEA noise)
     //     uint8_t customPayload[MAX_PAYLOAD_SIZE]; // This array holds the payload data bytes. MAX_PAYLOAD_SIZE defaults to 256. The CFG_RATE payload is only 6 bytes!
-    //     gps.setPacketCfgPayloadSize(MAX_PAYLOAD_SIZE);
+    //     m_gps.setPacketCfgPayloadSize(MAX_PAYLOAD_SIZE);
     //     ubxPacket customCfg = {0, 0, 0, 0, 0, customPayload, 0, 0, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED};
     //     customCfg.cls = UBX_CLASS_CFG; // This is the message Class
     //     customCfg.id = UBX_MON_VER; // This is the message ID
     //     customCfg.len = 0; // Setting the len (length) to zero let's us poll the current settings
     //     customCfg.startingSpot = 0; // Always set the startingSpot to zero (unless you really know what you are doing)
     //     uint16_t maxWait = 250; // Wait for up to 250ms (Serial may need a lot longer e.g. 1100)
-    //     if (gps.sendCommand(&customCfg, maxWait) != SFE_UBLOX_STATUS_DATA_RECEIVED) throwError(GPS_READ_FAIL); // We are expecting data and an ACK, throw error otherwise
+    //     if (m_gps.sendCommand(&customCfg, maxWait) != SFE_UBLOX_STATUS_DATA_RECEIVED) throwError(GPS_READ_FAIL); // We are expecting data and an ACK, throw error otherwise
 
     // }
 
@@ -349,14 +351,14 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
         //GRAB TTFF FROM GPS
         enableAuxPower(true); //Make sure power is applied to GPS
         uint8_t customPayload[MAX_PAYLOAD_SIZE]; // This array holds the payload data bytes. MAX_PAYLOAD_SIZE defaults to 256. The CFG_RATE payload is only 6 bytes!
-        gps.setPacketCfgPayloadSize(MAX_PAYLOAD_SIZE);
+        m_gps.setPacketCfgPayloadSize(MAX_PAYLOAD_SIZE);
         ubxPacket customCfg = {0, 0, 0, 0, 0, customPayload, 0, 0, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED};
         customCfg.cls = UBX_CLASS_NAV; // This is the message Class
         customCfg.id = UBX_NAV_STATUS; // This is the message ID
         customCfg.len = 0; // Setting the len (length) to zero let's us poll the current settings
         customCfg.startingSpot = 0; // Always set the startingSpot to zero (unless you really know what you are doing)
         uint16_t maxWait = 1500; // Wait for up to 250ms (Serial may need a lot longer e.g. 1100)
-        if (gps.sendCommand(&customCfg, maxWait) != SFE_UBLOX_STATUS_DATA_RECEIVED) {
+        if (m_gps.sendCommand(&customCfg, maxWait) != SFE_UBLOX_STATUS_DATA_RECEIVED) {
             m_serialDebug.println("GPS READ FAIL"); //DEBUG!
             throwError(GPS_READ_FAIL); // We are expecting data and an ACK, throw error otherwise
         }
@@ -584,7 +586,7 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 		// ioSense.digitalWrite(pinsSense::MUX_EN, HIGH); //Turn MUX back off 
 		// m_gpio.digitalWrite(KestrelPins::PortBPins[talonPort], LOW); //Return to default external connecton
         temperatureString = temperatureString + "]";
-        output = output + "\"SIV\":" + String(gps.getSIV()) + ",\"FIX\":" + String(gps.getFixType()) + ",";
+        output = output + "\"SIV\":" + String(m_gps.getSIV()) + ",\"FIX\":" + String(m_gps.getFixType()) + ",";
 		output = output + temperatureString + ","; 
 		// return output + ",\"Pos\":[" + String(port) + "]}}";
 		// return output;
@@ -649,13 +651,13 @@ bool Kestrel::updateLocation(bool forceUpdate)
         bool obState = enableI2C_OB(true); //Turn on internal I2C
         enableAuxPower(true); //Turn on aux power 
         m_serialDebug.print("PVT Response: "); //DEBUG!
-        m_serialDebug.println(gps.getPVT());
-        // gps.getPVT(); //Force updated call //DEBUG!
-        if(gps.getPVT() && gps.getFixType() >= 2 && gps.getFixType() <= 4 && gps.getGnssFixOk()) { //Only update if GPS has at least a 2D fix
+        m_serialDebug.println(m_gps.getPVT());
+        // m_gps.getPVT(); //Force updated call //DEBUG!
+        if(m_gps.getPVT() && m_gps.getFixType() >= 2 && m_gps.getFixType() <= 4 && m_gps.getGnssFixOk()) { //Only update if GPS has at least a 2D fix
             m_serialDebug.println("UPDATE GPS"); //DEBUG!
-            longitude = gps.getLongitude();
-            latitude = gps.getLatitude();
-            altitude = gps.getAltitude();
+            longitude = m_gps.getLongitude();
+            latitude = m_gps.getLatitude();
+            altitude = m_gps.getAltitude();
             posTime = getTime(); //Update time that GPS measure was made
             updateGPS = false; //Clear flag when done
             status = true;
@@ -998,8 +1000,8 @@ uint8_t Kestrel::syncTime(bool force)
     m_timeProvider.delay(1000);
     m_ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
     m_timeProvider.delay(1000);
-    // gps.begin();
-    if(gps.begin() == false) {
+    // m_gps.begin();
+    if(m_gps.begin() == false) {
         // throwError(GPS_INIT_FAIL); //DEBUG!
         criticalFault = true; //Set critical fault since we can't init GPS
         // timeSyncVals[1] = 0; //Clear if not updated
@@ -1010,12 +1012,12 @@ uint8_t Kestrel::syncTime(bool force)
     // if(false); //DEBUG!
     else {
     
-    // if(gps.begin() == false) throwError(GPS_INIT_FAIL);
+    // if(m_gps.begin() == false) throwError(GPS_INIT_FAIL);
     // else {
         sourceRequested[TimeSource::GPS] = true;
-        gps.setI2COutput(COM_TYPE_UBX); //Set the I2C port to output UBX only (turn off NMEA noise)
+        m_gps.setI2COutput(COM_TYPE_UBX); //Set the I2C port to output UBX only (turn off NMEA noise)
         
-        gps.setPacketCfgPayloadSize(MAX_PAYLOAD_SIZE);
+        m_gps.setPacketCfgPayloadSize(MAX_PAYLOAD_SIZE);
         ubxPacket customCfg = {0, 0, 0, 0, 0, customPayload, 0, 0, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED};
         customCfg.cls = UBX_CLASS_NAV; // This is the message Class
         // customCfg.id = UBX_NAV_TIMELS; // This is the message ID
@@ -1023,7 +1025,7 @@ uint8_t Kestrel::syncTime(bool force)
         customCfg.len = 0; // Setting the len (length) to zero let's us poll the current settings
         customCfg.startingSpot = 0; // Always set the startingSpot to zero (unless you really know what you are doing)
         uint16_t maxWait = 1500; // Wait for up to 250ms (Serial may need a lot longer e.g. 1100)
-        if (gps.sendCommand(&customCfg, maxWait) != SFE_UBLOX_STATUS_DATA_RECEIVED) {
+        if (m_gps.sendCommand(&customCfg, maxWait) != SFE_UBLOX_STATUS_DATA_RECEIVED) {
             m_serialDebug.println("GPS READ FAIL"); //DEBUG!
             throwError(GPS_READ_FAIL); // We are expecting data and an ACK, throw error otherwise
         }
@@ -1058,15 +1060,15 @@ uint8_t Kestrel::syncTime(bool force)
         // m_serialDebug.println(customPayload[9]);
         
         // m_serialDebug.print("GPS Time: "); //DEBUG!
-        // m_serialDebug.print(gps.getHour());
+        // m_serialDebug.print(m_gps.getHour());
         // m_serialDebug.print(":");
-        // m_serialDebug.print(gps.getMinute());
+        // m_serialDebug.print(m_gps.getMinute());
         // m_serialDebug.print(":");
-        // m_serialDebug.println(gps.getSecond());
+        // m_serialDebug.println(m_gps.getSecond());
     }
-    // if(gps.getDateValid() && gps.getTimeValid() && gps.getTimeFullyResolved()) {
-    uint8_t fixType = gps.getFixType();
-    bool gnssFix = gps.getGnssFixOk();
+    // if(m_gps.getDateValid() && m_gps.getTimeValid() && m_gps.getTimeFullyResolved()) {
+    uint8_t fixType = m_gps.getFixType();
+    bool gnssFix = m_gps.getGnssFixOk();
     if((customPayload[19] & 0x0F) == 0x07 && (fixType >= 2 && fixType <= 4 && gnssFix)) { //Check if all times are valid AND fix is valid
         // struct tm timeinfo = {0}; //Create struct in C++ time land
 
@@ -1664,7 +1666,7 @@ int Kestrel::sleep()
             // enableSD(false); //Turn off SD power
             m_ioOB.digitalWrite(PinsOB::LED_EN, HIGH); //Disable LEDs (if not done already) 
             m_led.sleep(true); //Put LED driver into low power mode 
-            if(!gps.powerOffWithInterrupt(3600000, VAL_RXM_PMREQ_WAKEUPSOURCE_EXTINT0)) throwError(GPS_READ_FAIL); //Shutdown for an hour unless woken up via pin trip
+            if(!m_gps.powerOffWithInterrupt(3600000, VAL_RXM_PMREQ_WAKEUPSOURCE_EXTINT0)) throwError(GPS_READ_FAIL); //Shutdown for an hour unless woken up via pin trip
 
             // result = m_system.sleep(config);
             // m_system.sleep(config); //DEBUG!
@@ -1684,7 +1686,7 @@ int Kestrel::sleep()
             enableAuxPower(false); //Turn all aux power off
             m_ioOB.digitalWrite(PinsOB::LED_EN, HIGH); //Disable LEDs (if not done already)
             m_led.sleep(true); //Put LED driver into low power mode  
-            // gps.powerOffWithInterrupt(3600000, VAL_RXM_PMREQ_WAKEUPSOURCE_EXTINT0); //Shutdown for an hour unless woken up via pin trip
+            // m_gps.powerOffWithInterrupt(3600000, VAL_RXM_PMREQ_WAKEUPSOURCE_EXTINT0); //Shutdown for an hour unless woken up via pin trip
 
             // result = m_system.sleep(config);
             // m_system.sleep(config); //DEBUG!
@@ -1792,17 +1794,17 @@ int Kestrel::wake()
                 m_timeProvider.delay(1000);
                 m_ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
                 m_timeProvider.delay(1000);
-                if(gps.begin() == false) {
+                if(m_gps.begin() == false) {
                     criticalFault = true; //DEBUG! ??
                     throwError(GPS_INIT_FAIL);
                     m_serialDebug.println("GPS ERROR");
                 }
                 else {
-                    gps.setI2COutput(COM_TYPE_UBX);
-                    // gps.setAutoPVT(true); //DEBUG!
+                    m_gps.setI2COutput(COM_TYPE_UBX);
+                    // m_gps.setAutoPVT(true); //DEBUG!
                     unsigned long localTime = m_timeProvider.millis();
-                    while((gps.getFixType() < 2 || gps.getFixType() > 4) && !gps.getGnssFixOk() && (localTime - m_timeProvider.millis()) < 30000); //Wait up to 30 seconds to get a GPS fix, if not, move on
-                    if(!(gps.getFixType() >= 2 && gps.getFixType() <= 4)) { //If GPS failed to connect after that period, throw error
+                    while((m_gps.getFixType() < 2 || m_gps.getFixType() > 4) && !m_gps.getGnssFixOk() && (localTime - m_timeProvider.millis()) < 30000); //Wait up to 30 seconds to get a GPS fix, if not, move on
+                    if(!(m_gps.getFixType() >= 2 && m_gps.getFixType() <= 4)) { //If GPS failed to connect after that period, throw error
                         throwError(GPS_UNAVAILABLE | 0x100); //Set subtype to timeout
                     }
                     updateGPS = true; //Set flag so position is updated at next update call
@@ -1822,17 +1824,17 @@ int Kestrel::wake()
                 m_timeProvider.delay(1000);
                 m_ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
                 m_timeProvider.delay(1000);
-                if(gps.begin() == false) {
+                if(m_gps.begin() == false) {
                     criticalFault = true; //DEBUG! ??
                     throwError(GPS_INIT_FAIL);
                     m_serialDebug.println("GPS ERROR");
                 }
                 else {
-                    gps.setI2COutput(COM_TYPE_UBX);
-                    // gps.setAutoPVT(true); //DEBUG!
+                    m_gps.setI2COutput(COM_TYPE_UBX);
+                    // m_gps.setAutoPVT(true); //DEBUG!
                     unsigned long localTime = m_timeProvider.millis();
-                    while((gps.getFixType() < 2 || gps.getFixType() > 4) && !gps.getGnssFixOk() && (localTime - m_timeProvider.millis()) < 60000); //Wait up to 60 seconds to get a GPS fix, if not, move on
-                    if(!(gps.getFixType() >= 2 && gps.getFixType() <= 4)) { //If GPS failed to connect after that period, throw error
+                    while((m_gps.getFixType() < 2 || m_gps.getFixType() > 4) && !m_gps.getGnssFixOk() && (localTime - m_timeProvider.millis()) < 60000); //Wait up to 60 seconds to get a GPS fix, if not, move on
+                    if(!(m_gps.getFixType() >= 2 && m_gps.getFixType() <= 4)) { //If GPS failed to connect after that period, throw error
                         throwError(GPS_UNAVAILABLE | 0x100); //Set subtype to timeout
                     }
                     updateGPS = true; //Set flag so position is updated at next update call
@@ -1855,17 +1857,17 @@ int Kestrel::wake()
             // m_timeProvider.delay(1000);
             // m_ioOB.digitalWrite(PinsOB::GPS_INT, LOW);
             // m_timeProvider.delay(1000);
-            // if(gps.begin() == false) {
+            // if(m_gps.begin() == false) {
             //     criticalFault = true; //DEBUG! ??
             //     throwError(GPS_INIT_FAIL);
             //     m_serialDebug.println("GPS ERROR");
             // }
             // else {
-            //     gps.setI2COutput(COM_TYPE_UBX);
-            //     // gps.setAutoPVT(true); //DEBUG!
+            //     m_gps.setI2COutput(COM_TYPE_UBX);
+            //     // m_gps.setAutoPVT(true); //DEBUG!
             //     unsigned long localTime = m_timeProvider.millis();
-            //     while((gps.getFixType() < 2 || gps.getFixType() > 4) && !gps.getGnssFixOk() && (localTime - m_timeProvider.millis()) < 60000); //Wait up to 60 seconds to get a GPS fix, if not, move on
-            //     if(!(gps.getFixType() >= 2 && gps.getFixType() <= 4)) { //If GPS failed to connect after that period, throw error
+            //     while((m_gps.getFixType() < 2 || m_gps.getFixType() > 4) && !m_gps.getGnssFixOk() && (localTime - m_timeProvider.millis()) < 60000); //Wait up to 60 seconds to get a GPS fix, if not, move on
+            //     if(!(m_gps.getFixType() >= 2 && m_gps.getFixType() <= 4)) { //If GPS failed to connect after that period, throw error
             //         throwError(GPS_UNAVAILABLE | 0x100); //Set subtype to timeout
             //     }
             //     updateGPS = true; //Set flag so position is updated at next update call

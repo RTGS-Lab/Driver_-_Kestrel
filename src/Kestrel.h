@@ -71,6 +71,7 @@ Distributed as-is; no warranty is given.
 #include "../../FlightControl-hardware-dependencies/src/ILed.h"
 #include "../../FlightControl-hardware-dependencies/src/IRtc.h"
 #include "../../FlightControl-hardware-dependencies/src/IAmbientLight.h"
+#include "../../FlightControl-hardware-dependencies/src/IGps.h"
 
 namespace Pins { //Use for B402
 	constexpr uint16_t WD_HOLD  = D2;
@@ -218,8 +219,9 @@ class Kestrel: public Sensor
 				ILed& led,
 				IRtc& rtc,
 				IAmbientLight& als,
+				IGps& gps,
 				bool useSensors = false);
-		SFE_UBLOX_GNSS gps;
+		IGps& m_gps;
         String begin(time_t time, bool &criticalFault, bool &fault);
 		int sleep();
 		int wake();
