@@ -352,9 +352,9 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
         enableAuxPower(true); //Make sure power is applied to GPS
         uint8_t customPayload[MAX_PAYLOAD_SIZE]; // This array holds the payload data bytes. MAX_PAYLOAD_SIZE defaults to 256. The CFG_RATE payload is only 6 bytes!
         m_gps.setPacketCfgPayloadSize(MAX_PAYLOAD_SIZE);
-        ubxPacket customCfg = {0, 0, 0, 0, 0, customPayload, 0, 0, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED};
-        customCfg.cls = UBX_CLASS_NAV; // This is the message Class
-        customCfg.id = UBX_NAV_STATUS; // This is the message ID
+        IUbxPacket customCfg = {0, 0, 0, 0, 0, customPayload, 0, 0, VALIDITY_NOT_DEFINED, VALIDITY_NOT_DEFINED};
+        customCfg.cls = 0x01;  // Navigation Results Messages: Position, Speed, Time, Acceleration, Heading, DOP, SVs used // This is the message Class
+        customCfg.id = 0x03;    // Receiver Navigation Status // This is the message ID
         customCfg.len = 0; // Setting the len (length) to zero let's us poll the current settings
         customCfg.startingSpot = 0; // Always set the startingSpot to zero (unless you really know what you are doing)
         uint16_t maxWait = 1500; // Wait for up to 250ms (Serial may need a lot longer e.g. 1100)
@@ -1018,10 +1018,10 @@ uint8_t Kestrel::syncTime(bool force)
         m_gps.setI2COutput(COM_TYPE_UBX); //Set the I2C port to output UBX only (turn off NMEA noise)
         
         m_gps.setPacketCfgPayloadSize(MAX_PAYLOAD_SIZE);
-        ubxPacket customCfg = {0, 0, 0, 0, 0, customPayload, 0, 0, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED};
+        IUbxPacket customCfg = {0, 0, 0, 0, 0, customPayload, 0, 0, VALIDITY_NOT_DEFINED, VALIDITY_NOT_DEFINED};
         customCfg.cls = UBX_CLASS_NAV; // This is the message Class
         // customCfg.id = UBX_NAV_TIMELS; // This is the message ID
-        customCfg.id = UBX_NAV_TIMEUTC; // This is the message ID
+        customCfg.id = 0x21;   // UTC Time Solution;
         customCfg.len = 0; // Setting the len (length) to zero let's us poll the current settings
         customCfg.startingSpot = 0; // Always set the startingSpot to zero (unless you really know what you are doing)
         uint16_t maxWait = 1500; // Wait for up to 250ms (Serial may need a lot longer e.g. 1100)
@@ -1666,7 +1666,7 @@ int Kestrel::sleep()
             // enableSD(false); //Turn off SD power
             m_ioOB.digitalWrite(PinsOB::LED_EN, HIGH); //Disable LEDs (if not done already) 
             m_led.sleep(true); //Put LED driver into low power mode 
-            if(!m_gps.powerOffWithInterrupt(3600000, VAL_RXM_PMREQ_WAKEUPSOURCE_EXTINT0)) throwError(GPS_READ_FAIL); //Shutdown for an hour unless woken up via pin trip
+            if(!m_gps.powerOffWithInterrupt(3600000, 0x00000020)) throwError(GPS_READ_FAIL); //Shutdown for an hour unless woken up via pin trip //0x00000020 is VAL_RXM_PMREQ_WAKEUPSOURCE_EXTINT0 = 0x00000020; // extint0
 
             // result = m_system.sleep(config);
             // m_system.sleep(config); //DEBUG!
@@ -1686,7 +1686,7 @@ int Kestrel::sleep()
             enableAuxPower(false); //Turn all aux power off
             m_ioOB.digitalWrite(PinsOB::LED_EN, HIGH); //Disable LEDs (if not done already)
             m_led.sleep(true); //Put LED driver into low power mode  
-            // m_gps.powerOffWithInterrupt(3600000, VAL_RXM_PMREQ_WAKEUPSOURCE_EXTINT0); //Shutdown for an hour unless woken up via pin trip
+            // m_gps.powerOffWithInterrupt(3600000, 0x00000020); //Shutdown for an hour unless woken up via pin trip //0x00000020 is VAL_RXM_PMREQ_WAKEUPSOURCE_EXTINT0 = 0x00000020; // extint0
 
             // result = m_system.sleep(config);
             // m_system.sleep(config); //DEBUG!
