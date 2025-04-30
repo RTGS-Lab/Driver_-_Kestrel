@@ -35,6 +35,7 @@ Kestrel::Kestrel(ITimeProvider& timeProvider,
                  IAmbientLight& als,
                  IGps& gps,
                  IHumidityTemperature& humidityTemp,
+                 IAccelerometer& accel,
                  bool useSensors) :  
                  m_csaAlpha(csaAlpha), 
                  m_csaBeta(csaBeta), 
@@ -51,7 +52,8 @@ Kestrel::Kestrel(ITimeProvider& timeProvider,
                  m_rtc(rtc),
                  m_als(als),
                  m_gps(gps),
-                 m_humidityTemp(humidityTemp)
+                 m_humidityTemp(humidityTemp),
+                 m_accel(accel)
 {
 	// port = talonPort; //Copy to local
 	// version = hardwareVersion; //Copy to local
@@ -141,7 +143,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
         m_serialDebug.print(m_gps.getATTheading());
     }
     /// AUTO ZERO ACCEL
-    int accelInitError = accel.begin();
+    int accelInitError = m_accel.begin();
     if(accelInitError == -1) {
         if(bma456.begin() == true) accelUsed = AccelType::BMA456; //If BMA456 detected, switch to that
         else throwError(ACCEL_INIT_FAIL); //If MXC6655 fails AND BMA456 fails, throw a general fail init error
@@ -149,13 +151,13 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     }
      
     if(accelInitError == 0 && accelUsed == AccelType::MXC6655) { //If accel read is good and MXC6655 is used, try zero
-        int accelError = accel.updateAccelAll(); //Get updated values
+        int accelError = m_accel.updateAccelAll(); //Get updated values
         if(accelError != 0) {
             throwError(ACCEL_DATA_FAIL | (accelError << 8)); //Throw error for failure to communicate with accel, OR error code
             //FIX! Null outputs??
         }
-        if(abs(accel.data[0]) < 0.04366 && abs(accel.data[1]) < 0.04366 ) zeroAccel(); //If x and y are < +/- 2.5 degrees, zero the accelerometer Z axis
-        // output = output + "\"ACCEL\":[" + String(accel.data[0]) + "," + String(accel.data[1]) + "," + String(accel.data[2]) + "],"; 
+        if(abs(m_accel.getData()[0]) < 0.04366 && abs(m_accel.getData()[1]) < 0.04366 ) zeroAccel(); //If x and y are < +/- 2.5 degrees, zero the accelerometer Z axis
+        // output = output + "\"ACCEL\":[" + String(m_accel.geData()[0]) + "," + String(m_accel.getData()[1]) + "," + String(m_accel.getData()[2]) + "],"; 
     }
     else if(accelInitError != -1 && accelUsed == AccelType::MXC6655) { //If detected (not -1) but some other error, report that 
         throwError(ACCEL_DATA_FAIL | (accelInitError << 8)); //Throw error for failure to communicate with accel, OR error code 
@@ -166,8 +168,8 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     for(int i = 0; i < 3; i++) { 
         float temp = 0;
         EEPROM.get(i*4, temp); //Read in offset vals
-        if(!isnan(temp)) accel.offset[i] = temp; //Set offset vals if real number (meaning offset has been established)
-        else accel.offset[i] = 0; //If there is no existing offset, set to 0
+        if(!isnan(temp)) m_accel.getOffset()[i] = temp; //Set offset vals if real number (meaning offset has been established)
+        else m_accel.getOffset()[i] = 0; //If there is no existing offset, set to 0
     }
     // if(m_cloud.connected() == false) criticalFault = true; //If not connected to cell set critical error
     // if(criticalFault) setIndicatorState(IndicatorLight::STAT, IndicatorMode::ERROR_CRITICAL); //If there is a critical fault, set the stat light
@@ -328,7 +330,7 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
 
 	if(diagnosticLevel <= 2) {
 		//TBD
-        if(accelUsed == AccelType::MXC6655) output = output + "\"Accel_Offset\":[" + String(accel.offset[0]) + "," + String(accel.offset[1]) + "," + String(accel.offset[2]) + "],"; 
+        if(accelUsed == AccelType::MXC6655) output = output + "\"Accel_Offset\":[" + String(m_accel.getOffset()[0]) + "," + String(m_accel.getOffset()[1]) + "," + String(m_accel.getOffset()[2]) + "],"; 
         if(accelUsed == AccelType::BMA456) output = output + "\"Accel_Offset\":[0,0,0],"; 
         uint8_t rtcConfigA = (m_rtc.readByte(0) & 0x80); //Read in ST bit
         rtcConfigA = rtcConfigA | ((m_rtc.readByte(3) & 0x38) << 1); //Read in OSCRUN, PWRFAIL, VBATEN bits
@@ -546,16 +548,16 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
         m_humidityTemp.~IHumidityTemperature(); //Delete objects
 
         if(accelUsed == AccelType::MXC6655) { //If MXC6655 is used, proceed with reading
-            int accelInitError = accel.begin();
+            int accelInitError = m_accel.begin();
             if(accelInitError == 0) {
                 
-                int accelError = accel.updateAccelAll();
+                int accelError = m_accel.updateAccelAll();
                 if(accelError != 0) {
                     throwError(ACCEL_DATA_FAIL | (accelError << 8)); //Throw error for failure to communicate with accel, OR error code
                     //FIX! Null outputs??
                 }
-                output = output + "\"ACCEL\":[" + String(accel.data[0]) + "," + String(accel.data[1]) + "," + String(accel.data[2]) + "],"; 
-                temperatureString = temperatureString + String(accel.getTemp(), 4);
+                output = output + "\"ACCEL\":[" + String(m_accel.getData()[0]) + "," + String(m_accel.getData()[1]) + "," + String(m_accel.getData()[2]) + "],"; 
+                temperatureString = temperatureString + String(m_accel.getTemp(), 4);
             }
             else {
                 throwError(ACCEL_DATA_FAIL); //Throw error for failure to communicate with accel
@@ -1598,36 +1600,36 @@ bool Kestrel::feedWDT()
 bool Kestrel::zeroAccel(bool reset)
 {
     if(reset) { //If commanded to reset, clear accel values
-        accel.offset[0] = 0;
-        accel.offset[1] = 0;
-        accel.offset[2] = 0;
+        m_accel.getOffset()[0] = 0;
+        m_accel.getOffset()[1] = 0;
+        m_accel.getOffset()[2] = 0;
         // return false;
     }
     else {
         // for(int i = 0; i < 3; i++) {
-        //     accel.offset[i] = -accel.getAccel(i); //Null each axis
+        //     m_accel.getOffset()[i] = -m_accel.getAccel(i); //Null each axis
         // }
-        if(accel.begin() == 0) {
-            // accel.offset[0] = -accel.getAccel(0); //Null each axis
-            // accel.offset[1] = -accel.getAccel(1); //Null each axis
-            accel.offset[0] = 0; //Null each axis
-            accel.offset[1] = 0; //Null each axis
-            float zVal = accel.getAccel(2);
-            if(zVal > 0) accel.offset[2] = 1 - accel.getAccel(2); //Set z to 1 
-            else if(zVal < 0) accel.offset[2] = accel.getAccel(2) + 1; //Set for negative offset
+        if(m_accel.begin() == 0) {
+            // m_accel.getOffset()[0] = -m_accel.getAccel(0); //Null each axis
+            // m_accel.getOffset()[1] = -m_accel.getAccel(1); //Null each axis
+            m_accel.getOffset()[0] = 0; //Null each axis
+            m_accel.getOffset()[1] = 0; //Null each axis
+            float zVal = m_accel.getAccel(2);
+            if(zVal > 0) m_accel.getOffset()[2] = 1 - m_accel.getAccel(2); //Set z to 1 
+            else if(zVal < 0) m_accel.getOffset()[2] = m_accel.getAccel(2) + 1; //Set for negative offset
         }
         else {
-            accel.offset[0] = 0;
-            accel.offset[1] = 0;
-            accel.offset[2] = 0;
+            m_accel.getOffset()[0] = 0;
+            m_accel.getOffset()[1] = 0;
+            m_accel.getOffset()[2] = 0;
             //THROW ERROR!
         }
         
         // return true;
     }
-    EEPROM.put(0, accel.offset[0]); //Write to long term storage
-    EEPROM.put(4, accel.offset[1]);
-    EEPROM.put(8, accel.offset[2]);
+    EEPROM.put(0, m_accel.getOffset()[0]); //Write to long term storage
+    EEPROM.put(4, m_accel.getOffset()[1]);
+    EEPROM.put(8, m_accel.getOffset()[2]);
     return reset;
     
 }
