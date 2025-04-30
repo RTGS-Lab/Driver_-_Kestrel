@@ -54,7 +54,7 @@ Distributed as-is; no warranty is given.
 //#include "../../SparkFun_u-blox_GNSS_Arduino_Library/src/SparkFun_u-blox_GNSS_Arduino_Library.h"
 //#include "../../PAC1932_Library/src/PAC1934.h"
 //#include "../../VEML3328/src/VEML3328.h"
-#include <Adafruit_SHT4x.h>
+//#include <Adafruit_SHT4x.h>
 #include <MXC6655.h>
 #include <arduino_bma456.h>
 // #include <GlobalPins.h>
@@ -72,6 +72,7 @@ Distributed as-is; no warranty is given.
 #include "../../FlightControl-hardware-dependencies/src/IRtc.h"
 #include "../../FlightControl-hardware-dependencies/src/IAmbientLight.h"
 #include "../../FlightControl-hardware-dependencies/src/IGps.h"
+#include "../../FlightControl-hardware-dependencies/src/IHumidityTemperature.h"
 
 namespace Pins { //Use for B402
 	constexpr uint16_t WD_HOLD  = D2;
@@ -220,6 +221,7 @@ class Kestrel: public Sensor
 				IRtc& rtc,
 				IAmbientLight& als,
 				IGps& gps,
+				IHumidityTemperature& humidityTemp,
 				bool useSensors = false);
 		IGps& m_gps;
         String begin(time_t time, bool &criticalFault, bool &fault);
@@ -294,7 +296,7 @@ class Kestrel: public Sensor
 		
 		IRtc& m_rtc;
 		IAmbientLight& m_als;
-		Adafruit_SHT4x atmos;
+		IHumidityTemperature& m_humidityTemp;
 		MXC6655 accel; 
 
 		const int ledBrightness = 75; //Default to 75% on

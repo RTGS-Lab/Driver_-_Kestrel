@@ -34,6 +34,7 @@ Kestrel::Kestrel(ITimeProvider& timeProvider,
                  IRtc& rtc,
                  IAmbientLight& als,
                  IGps& gps,
+                 IHumidityTemperature& humidityTemp,
                  bool useSensors) :  
                  m_csaAlpha(csaAlpha), 
                  m_csaBeta(csaBeta), 
@@ -49,7 +50,8 @@ Kestrel::Kestrel(ITimeProvider& timeProvider,
                  m_led(led),
                  m_rtc(rtc),
                  m_als(als),
-                 m_gps(gps)
+                 m_gps(gps),
+                 m_humidityTemp(humidityTemp)
 {
 	// port = talonPort; //Copy to local
 	// version = hardwareVersion; //Copy to local
@@ -529,10 +531,10 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
         }
 
         String temperatureString = "\"Temperature\":["; //Used to gather temp from multiple sources
-        if(atmos.begin()) {
-            atmos.setPrecision(SHT4X_MED_PRECISION); //Set to mid performance 
-            sensors_event_t humidity, temp;
-            atmos.getEvent(&humidity, &temp);
+        if(m_humidityTemp.begin()) {
+            m_humidityTemp.setPrecision(HT_MED_PRECISION); //Set to mid performance 
+            Isensors_event_t humidity, temp;
+            m_humidityTemp.getEvent(&humidity, &temp);
             output = output + "\"RH\":" + String(humidity.relative_humidity, 4) + ","; //Concatonate atmos data 
             temperatureString = temperatureString + String(temp.temperature, 4) + ",";
         }
@@ -541,7 +543,7 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
             temperatureString = temperatureString + "null,";
             //THROW ERROR
         }
-        atmos.~Adafruit_SHT4x(); //Delete objects
+        m_humidityTemp.~IHumidityTemperature(); //Delete objects
 
         if(accelUsed == AccelType::MXC6655) { //If MXC6655 is used, proceed with reading
             int accelInitError = accel.begin();
