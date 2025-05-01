@@ -36,6 +36,7 @@ Kestrel::Kestrel(ITimeProvider& timeProvider,
                  IGps& gps,
                  IHumidityTemperature& humidityTemp,
                  IAccelerometer& accel,
+                 IAccelerometer& backupAccel,
                  bool useSensors) :  
                  m_csaAlpha(csaAlpha), 
                  m_csaBeta(csaBeta), 
@@ -53,7 +54,8 @@ Kestrel::Kestrel(ITimeProvider& timeProvider,
                  m_als(als),
                  m_gps(gps),
                  m_humidityTemp(humidityTemp),
-                 m_accel(accel)
+                 m_accel(accel),
+                 m_backupAccel(backupAccel)
 {
 	// port = talonPort; //Copy to local
 	// version = hardwareVersion; //Copy to local
@@ -145,7 +147,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     /// AUTO ZERO ACCEL
     int accelInitError = m_accel.begin();
     if(accelInitError == -1) {
-        if(bma456.begin() == true) accelUsed = AccelType::BMA456; //If BMA456 detected, switch to that
+        if(m_backupAccel.begin() == true) accelUsed = AccelType::BMA456; //If BMA456 detected, switch to that
         else throwError(ACCEL_INIT_FAIL); //If MXC6655 fails AND BMA456 fails, throw a general fail init error
         // m_serialDebug.println("MXC6655 Detect fail!"); //DEBUG!
     }
@@ -168,7 +170,7 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     for(int i = 0; i < 3; i++) { 
         float temp = 0;
         EEPROM.get(i*4, temp); //Read in offset vals
-        if(!isnan(temp)) m_accel.getOffset()[i] = temp; //Set offset vals if real number (meaning offset has been established)
+        if(!std::isnan(temp)) m_accel.getOffset()[i] = temp; //Set offset vals if real number (meaning offset has been established)
         else m_accel.getOffset()[i] = 0; //If there is no existing offset, set to 0
     }
     // if(m_cloud.connected() == false) criticalFault = true; //If not connected to cell set critical error
@@ -566,16 +568,18 @@ String Kestrel::selfDiagnostic(uint8_t diagnosticLevel, time_t time)
             }
         }
         else if (accelUsed == AccelType::BMA456) { //If BMA456 is used, proceed with reading
-            bool bma456Present = bma456.begin();
+            bool bma456Present = m_backupAccel.begin();
             float x = 0, y = 0, z = 0;
             int32_t temp = 0;
-            bma456.initialize();
+            m_backupAccel.updateAccelAll(); //calls initialize()
             for(int i = 0; i < 5; i++) { //FIX! DEBUG!
-                bma456.getAcceleration(&x, &y, &z);
+                x = m_backupAccel.getAccel(0);
+                y = m_backupAccel.getAccel(1);
+                z = m_backupAccel.getAccel(2);
                 m_timeProvider.delay(10);
             }
             
-            temp = bma456.getTemperature();
+            temp = m_backupAccel.getTemp();
 
             if(bma456Present) { //FIX! Check directly for failure instead of implied failure by presence or abscence 
                 output = output + "\"ACCEL\":[" + String(x/1000.0) + "," + String(y/1000.0) + "," + String(z/1000.0) + "],"; 

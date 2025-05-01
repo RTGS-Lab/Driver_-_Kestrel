@@ -56,7 +56,7 @@ Distributed as-is; no warranty is given.
 //#include "../../VEML3328/src/VEML3328.h"
 //#include <Adafruit_SHT4x.h>
 //#include <MXC6655.h>
-#include <arduino_bma456.h>
+//#include <arduino_bma456.h>
 // #include <GlobalPins.h>
 
 #include "../../FlightControl-platform-dependencies/src/ITimeProvider.h"
@@ -224,6 +224,7 @@ class Kestrel: public Sensor
 				IGps& gps,
 				IHumidityTemperature& humidityTemp,
 				IAccelerometer& accel,
+				IAccelerometer& backupAccel,
 				bool useSensors = false);
 		IGps& m_gps;
         String begin(time_t time, bool &criticalFault, bool &fault);
@@ -300,6 +301,7 @@ class Kestrel: public Sensor
 		IAmbientLight& m_als;
 		IHumidityTemperature& m_humidityTemp;
 		IAccelerometer& m_accel; 
+		IAccelerometer& m_backupAccel;
 
 		const int ledBrightness = 75; //Default to 75% on
 		const int ledPeriod = 500; //Default to 500ms period
