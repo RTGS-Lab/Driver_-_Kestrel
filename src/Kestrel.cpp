@@ -73,14 +73,22 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
 		// m_wire.begin();
         // m_wire.setClock(100000); //Confirm operation in fast mode
 	// #elif defined(PARTICLE)
-		if(!m_wire.isEnabled()) m_wire.begin(); //Only initialize I2C if not done already //INCLUDE FOR USE WITH PARTICLE 
+		if(!m_wire.isEnabled()) {
+            m_wire.begin(); //Only initialize I2C if not done already //INCLUDE FOR USE WITH PARTICLE 
+        } 
         m_wire.setClock(400000);
 	// #endif
-    if(!initDone) throwError(SYSTEM_RESET | ((static_cast<uint32_t>(m_system.resetReason()) << 8) & 0xFF00)); //Throw reset error with reason for reset as subtype. Truncate resetReason to one byte. This will include all predefined reasons, but will prevent issues if user returns some large (technically can be up to 32 bits) custom reset reason
+    if(!initDone) {
+        throwError(SYSTEM_RESET | (((uint32_t)(m_system.resetReason()) << 8) & 0xFF00)); //Throw reset error with reason for reset as subtype. Truncate resetReason to one byte. This will include all predefined reasons, but will prevent issues if user returns some large (technically can be up to 32 bits) custom reset reason
+    }
     bool globState = enableI2C_Global(false); //Turn off external I2C
     bool obState = enableI2C_OB(true); //Turn on internal I2C
-    if(m_ioOB.begin() != 0) criticalFault = true;
-    if(m_ioTalon.begin() != 0) criticalFault = true;
+    if(m_ioOB.begin() != 0) {
+        criticalFault = true;
+    }
+    if(m_ioTalon.begin() != 0) {
+        criticalFault = true;
+    }
     m_ioTalon.safeMode(IIOExpander::SAFEOFF); //DEBUG! //Turn safe mode off to speed up turn-off times for Talons
     enableAuxPower(true); //Turn on aux power 
     if(m_csaAlpha.begin() == false) { //If fails at default address, then try alt v1.9 address
@@ -107,7 +115,9 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     m_serialSdi12.begin(1200, 0b00000000); //Initialize SDI12 serial port //DEBUG! - Used to fix wakeup issue
     // setIndicatorState(IndicatorLight::ALL,IndicatorMode::WAITING); //Set all to blinking wait
     m_gpio.pinMode(Pins::Clock_INT, IPinMode::INPUT); //Make sure interrupt pin is always an input
-    if(m_rtc.begin(true) == 0) criticalFault = true; //Use with external oscilator, set critical fault if not able to connect 
+    if(m_rtc.begin(true) == 0) {
+        criticalFault = true; //Use with external oscilator, set critical fault if not able to connect 
+    } 
     else {
         m_rtc.enableAlarm(false, 0); //Disable all alarms on startup //DEBUG! Use to prevent alarm 1 from ever being activated 
         m_rtc.enableAlarm(false, 1); 
@@ -170,8 +180,12 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     for(int i = 0; i < 3; i++) { 
         float temp = 0;
         EEPROM.get(i*4, temp); //Read in offset vals
-        if(!std::isnan(temp)) m_accel.getOffset()[i] = temp; //Set offset vals if real number (meaning offset has been established)
-        else m_accel.getOffset()[i] = 0; //If there is no existing offset, set to 0
+        if(!std::isnan(temp)) {
+            m_accel.getOffset()[i] = temp; //Set offset vals if real number (meaning offset has been established)
+        }
+        else {
+            m_accel.getOffset()[i] = 0; //If there is no existing offset, set to 0
+        } 
     }
     // if(m_cloud.connected() == false) criticalFault = true; //If not connected to cell set critical error
     // if(criticalFault) setIndicatorState(IndicatorLight::STAT, IndicatorMode::ERROR_CRITICAL); //If there is a critical fault, set the stat light
