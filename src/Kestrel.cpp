@@ -157,8 +157,12 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
     /// AUTO ZERO ACCEL
     int accelInitError = m_accel.begin();
     if(accelInitError == -1) {
-        if(m_backupAccel.begin() == true) accelUsed = AccelType::BMA456; //If BMA456 detected, switch to that
-        else throwError(ACCEL_INIT_FAIL); //If MXC6655 fails AND BMA456 fails, throw a general fail init error
+        if(m_backupAccel.begin() == true) {
+            accelUsed = AccelType::BMA456; //If BMA456 detected, switch to that
+        } 
+        else {
+            throwError(ACCEL_INIT_FAIL); //If MXC6655 fails AND BMA456 fails, throw a general fail init error
+        }
         // m_serialDebug.println("MXC6655 Detect fail!"); //DEBUG!
     }
      
@@ -168,7 +172,9 @@ String Kestrel::begin(time_t time, bool &criticalFault, bool &fault)
             throwError(ACCEL_DATA_FAIL | (accelError << 8)); //Throw error for failure to communicate with accel, OR error code
             //FIX! Null outputs??
         }
-        if(abs(m_accel.getData()[0]) < 0.04366 && abs(m_accel.getData()[1]) < 0.04366 ) zeroAccel(); //If x and y are < +/- 2.5 degrees, zero the accelerometer Z axis
+        if(abs(m_accel.getData()[0]) < 0.04366 && abs(m_accel.getData()[1]) < 0.04366 ) {
+            zeroAccel(); //If x and y are < +/- 2.5 degrees, zero the accelerometer Z axis
+        }
         // output = output + "\"ACCEL\":[" + String(m_accel.geData()[0]) + "," + String(m_accel.getData()[1]) + "," + String(m_accel.getData()[2]) + "],"; 
     }
     else if(accelInitError != -1 && accelUsed == AccelType::MXC6655) { //If detected (not -1) but some other error, report that 
@@ -713,7 +719,9 @@ bool Kestrel::enablePower(uint8_t port, bool state)
         // return enableAuxPower(state); 
         return false; //DEBUG!
     }
-    if(port == 0 || port > numTalonPorts) throwError(KESTREL_PORT_RANGE_FAIL | portErrorCode);
+    if(port == 0 || port > numTalonPorts){
+       throwError(KESTREL_PORT_RANGE_FAIL | portErrorCode); 
+    } 
     else {
         bool obState = enableI2C_OB(true);
         bool globState = enableI2C_Global(false);
@@ -735,7 +743,9 @@ bool Kestrel::enableData(uint8_t port, bool state)
         enableI2C_External(state); 
         return false; //DEBUG!
     }
-    if(port == 0 || port > numTalonPorts) throwError(KESTREL_PORT_RANGE_FAIL | portErrorCode);
+    if(port == 0 || port > numTalonPorts) {
+        throwError(KESTREL_PORT_RANGE_FAIL | portErrorCode);
+    }
     else {
         bool obState = enableI2C_OB(true);
         bool globState = enableI2C_Global(false);
