@@ -47,19 +47,33 @@ Distributed as-is; no warranty is given.
 #define Kestrel_h
 
 #include <Sensor.h>
-#include <PCAL9535A.h>
-#include "../../PCA9634/src/PCA9634.h"
+//#include <PCAL9535A.h>
+//#include "../../PCA9634/src/PCA9634.h"
 // #include "MCP7940_Library/src/MCP7940.h"
-#include "../../Driver_-_MCP79412/src/MCP79412.h"
-#include "../../SparkFun_u-blox_GNSS_Arduino_Library/src/SparkFun_u-blox_GNSS_Arduino_Library.h"
-#include "../../PAC1932_Library/src/PAC1934.h"
-#include "../../VEML3328/src/VEML3328.h"
-#include <Adafruit_SHT4x.h>
-#include <MXC6655.h>
-#include <arduino_bma456.h>
+//#include "../../Driver_-_MCP79412/src/MCP79412.h"
+//#include "../../SparkFun_u-blox_GNSS_Arduino_Library/src/SparkFun_u-blox_GNSS_Arduino_Library.h"
+//#include "../../PAC1932_Library/src/PAC1934.h"
+//#include "../../VEML3328/src/VEML3328.h"
+//#include <Adafruit_SHT4x.h>
+//#include <MXC6655.h>
+//#include <arduino_bma456.h>
 // #include <GlobalPins.h>
 
+#include "../../FlightControl-platform-dependencies/src/ITimeProvider.h"
+#include "../../FlightControl-platform-dependencies/src/IGpio.h"
+#include "../../FlightControl-platform-dependencies/src/ISystem.h"
+#include "../../FlightControl-platform-dependencies/src/IWire.h"
+#include "../../FlightControl-platform-dependencies/src/ICloud.h"
+#include "../../FlightControl-platform-dependencies/src/ISerial.h"
 
+#include "../../FlightControl-hardware-dependencies/src/IIOExpander.h"
+#include "../../FlightControl-hardware-dependencies/src/ICurrentSenseAmplifier.h"
+#include "../../FlightControl-hardware-dependencies/src/ILed.h"
+#include "../../FlightControl-hardware-dependencies/src/IRtc.h"
+#include "../../FlightControl-hardware-dependencies/src/IAmbientLight.h"
+#include "../../FlightControl-hardware-dependencies/src/IGps.h"
+#include "../../FlightControl-hardware-dependencies/src/IHumidityTemperature.h"
+#include "../../FlightControl-hardware-dependencies/src/IAccelerometer.h"
 
 namespace Pins { //Use for B402
 	constexpr uint16_t WD_HOLD  = D2;
@@ -193,8 +207,26 @@ class Kestrel: public Sensor
 
 	const time_t CELL_TIMEOUT = 300000; ///<Amount of time [ms] to wait while trying to connect to cell
     public:
-        Kestrel(bool useSensors = false);
-		SFE_UBLOX_GNSS gps;
+        Kestrel(ITimeProvider& timeProvider,
+				IGpio& gpio,
+				ISystem& system,
+				IWire& wire,
+				ICloud& cloud,
+				ISerial& serialDebug,
+				ISerial& serialSdi12,
+				IIOExpander& ioOB,
+				IIOExpander& ioTalon,
+				ICurrentSenseAmplifier& csaAlpha,
+				ICurrentSenseAmplifier& csaBeta,
+				ILed& led,
+				IRtc& rtc,
+				IAmbientLight& als,
+				IGps& gps,
+				IHumidityTemperature& humidityTemp,
+				IAccelerometer& accel,
+				IAccelerometer& backupAccel,
+				bool useSensors = false);
+		IGps& m_gps;
         String begin(time_t time, bool &criticalFault, bool &fault);
 		int sleep();
 		int wake();
@@ -221,7 +253,7 @@ class Kestrel: public Sensor
 		String getMetadata();
 		String selfDiagnostic(uint8_t diagnosticLevel, time_t time);
 		uint8_t totalErrors() {
-			return numErrors + rtc.numErrors; 
+			return numErrors + m_rtc.numErrors; 
 		}
 		bool updateLocation(bool forceUpdate = false);
 		bool connectToCell();
@@ -249,18 +281,28 @@ class Kestrel: public Sensor
 
 
     private:
-        PCAL9535A ioOB;
-        PCAL9535A ioTalon;
-		MCP79412 rtc;
-		PAC1934 csaAlpha;
-		PAC1934 csaBeta;
-		VEML3328 als;
-		Adafruit_SHT4x atmos;
-		MXC6655 accel; 
+		ITimeProvider& m_timeProvider;
+		IGpio& m_gpio;
+		ISystem& m_system;
+		IWire& m_wire;
+		ICloud& m_cloud;
+		ISerial& m_serialDebug;
+		ISerial& m_serialSdi12;
 
+		IIOExpander& m_ioOB;
+		IIOExpander& m_ioTalon;
 
+		ICurrentSenseAmplifier& m_csaAlpha;
+		ICurrentSenseAmplifier& m_csaBeta;
+
+		ILed& m_led;
 		
-		PCA9634 led;
+		IRtc& m_rtc;
+		IAmbientLight& m_als;
+		IHumidityTemperature& m_humidityTemp;
+		IAccelerometer& m_accel; 
+		IAccelerometer& m_backupAccel;
+
 		const int ledBrightness = 75; //Default to 75% on
 		const int ledPeriod = 500; //Default to 500ms period
 		const int ledOnTime = 250; //Default to 50% duty cycle
@@ -278,8 +320,8 @@ class Kestrel: public Sensor
 		bool wdtRelease = false;
 		bool updateGPS = false; ///<Don't try to update until ready 
 		static Kestrel* selfPointer;
-		static void timechange_handler(system_event_t event, int param);
-		static void outOfMemoryHandler(system_event_t event, int param);
+		static void timechange_handler(IEventType event, int param);
+		static void outOfMemoryHandler(IEventType event, int param);
 		bool timeSyncRequested = false; ///<Used to indicate to the system that a time sync was requested from Particle and not to override
 		time_t timegm(struct tm *tm); //Portable implementation
 		time_t maxTimeError = 30; //Max time error allowed between clock sources [seconds]
