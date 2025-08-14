@@ -864,6 +864,7 @@ bool Kestrel::enableSD(bool state)
         m_ioOB.digitalWrite(PinsOB::SD_EN, IIOExpander::ILevel::HIGH);
     }
     else if(!state) {
+        m_timeProvider.delay(10); //Wait for SD to finish any writing
         m_ioOB.pinMode(PinsOB::SD_EN, IIOExpander::IPinMode::OUTPUT);
         m_ioOB.digitalWrite(PinsOB::SD_EN, IIOExpander::ILevel::LOW);
     }
